@@ -5,6 +5,14 @@
   "version": "0.4.0",
   "publisher": "xianwei-zhang",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/xwzhangSZU/Raycast-Minimax-TTS.git"
+  },
+  "bugs": {
+    "url": "https://github.com/xwzhangSZU/Raycast-Minimax-TTS/issues"
+  },
+  "homepage": "https://github.com/xwzhangSZU/Raycast-Minimax-TTS#readme",
   "engines": {
     "vscode": "^1.95.0"
   },

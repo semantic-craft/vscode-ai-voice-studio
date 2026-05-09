@@ -1,7 +1,15 @@
 import * as vscode from "vscode";
-import { getOpenAIConfig } from "./config";
-import { synthesizeSpeech, TTSApiError } from "./core/openai-tts";
-import { getVoiceById, isVoiceAvailableForModel } from "./core/openai-voices";
+import { getConfig, setProvider, setProviderModel, setProviderVoice, type AppConfig } from "./config";
+import {
+  PROVIDER_IDS,
+  PROVIDER_LABELS,
+  TTSApiError,
+  isProviderId,
+  isVoiceAvailableForModel,
+  getVoiceById,
+  type ProviderId,
+} from "./core/providers";
+import { CATALOGS, synthesize, type ProviderArgs } from "./core/synthesize";
 import { SecretsStore } from "./secrets";
 import { VoiceStudioViewProvider } from "./webview-view-provider";
 
@@ -39,6 +47,15 @@ export function activate(context: vscode.ExtensionContext): void {
       case "requestStop":
         playback.abort();
         return;
+      case "providerChanged":
+        void setProvider(msg.provider).then(() => provider.postConfig(getConfig()));
+        return;
+      case "voiceChanged":
+        void setProviderVoice(msg.provider, msg.voice);
+        return;
+      case "modelChanged":
+        void setProviderModel(msg.provider, msg.model).then(() => provider.postConfig(getConfig()));
+        return;
     }
   });
 
@@ -49,41 +66,27 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    const apiKey = await secrets.ensureOpenAIKey();
+    const cfg = getConfig();
+    const apiKey = await secrets.ensure(cfg.provider);
     if (!apiKey) {
-      provider.postStatus("OpenAI API key not set.", "error");
+      provider.postStatus(`${PROVIDER_LABELS[cfg.provider]} API key not set.`, "error");
       return;
     }
 
-    const cfg = getOpenAIConfig();
-    const voice = getVoiceById(cfg.voice);
-    if (!voice) {
-      vscode.window.showErrorMessage(`AI Voice Studio: unknown voice "${cfg.voice}".`);
-      return;
-    }
-    if (!isVoiceAvailableForModel(voice, cfg.model)) {
-      vscode.window.showErrorMessage(
-        `AI Voice Studio: voice "${voice.name}" is not available for model "${cfg.model}".`,
-      );
+    const args = buildProviderArgs(cfg, apiKey);
+    if (!args) {
+      provider.postStatus(`Invalid voice/model for ${PROVIDER_LABELS[cfg.provider]}.`, "error");
       return;
     }
 
+    const voiceLabel = describeVoice(cfg);
     provider.reveal();
-    provider.postStatus(`Synthesizing with ${voice.name}…`);
+    provider.postStatus(`Synthesizing with ${PROVIDER_LABELS[cfg.provider]} · ${voiceLabel}…`);
 
     const signal = playback.begin();
     try {
-      const result = await synthesizeSpeech({
-        text: trimmed,
-        apiKey,
-        baseUrl: cfg.baseUrl,
-        model: cfg.model,
-        voice: cfg.voice,
-        format: cfg.format,
-        instructions: cfg.instructions,
-        signal,
-      });
-      provider.postPlay(result.audioBase64, result.format, cfg.playbackRate, `${source} · ${voice.name}`);
+      const result = await synthesize({ text: trimmed, signal }, args);
+      provider.postPlay(result.audioBase64, result.format, cfg.playbackRate, `${source} · ${voiceLabel}`);
     } catch (err) {
       handleError(err, provider);
     }
@@ -104,30 +107,47 @@ export function activate(context: vscode.ExtensionContext): void {
       playback.abort();
       provider.postStop();
     }),
-    vscode.commands.registerCommand("aiVoiceStudio.setOpenAIApiKey", async () => {
+    vscode.commands.registerCommand("aiVoiceStudio.setApiKey", async () => {
+      const choice = await pickProvider("Set API key for…");
+      if (!choice) return;
       const value = await vscode.window.showInputBox({
-        title: "OpenAI API key",
+        title: `${PROVIDER_LABELS[choice]} API key`,
         prompt: "Stored in VS Code SecretStorage. Leave empty to cancel.",
         password: true,
         ignoreFocusOut: true,
-        placeHolder: "sk-...",
       });
       if (!value) return;
-      await secrets.setOpenAIKey(value.trim());
-      vscode.window.showInformationMessage("AI Voice Studio: OpenAI API key saved.");
+      await secrets.set(choice, value.trim());
+      vscode.window.showInformationMessage(`AI Voice Studio: ${PROVIDER_LABELS[choice]} API key saved.`);
     }),
-    vscode.commands.registerCommand("aiVoiceStudio.clearOpenAIApiKey", async () => {
-      await secrets.clearOpenAIKey();
-      vscode.window.showInformationMessage("AI Voice Studio: OpenAI API key cleared.");
+    vscode.commands.registerCommand("aiVoiceStudio.clearApiKey", async () => {
+      const choice = await pickProvider("Clear API key for…");
+      if (!choice) return;
+      await secrets.clear(choice);
+      vscode.window.showInformationMessage(`AI Voice Studio: ${PROVIDER_LABELS[choice]} API key cleared.`);
     }),
     vscode.commands.registerCommand("aiVoiceStudio.focusView", () => {
       vscode.commands.executeCommand("aiVoiceStudio.studio.focus");
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.workspace.onDidChangeConfiguration((event) => {
+      if (event.affectsConfiguration("aiVoiceStudio") && provider.isReady()) {
+        provider.postConfig(getConfig());
+      }
     }),
   );
 }
 
 export function deactivate(): void {
   // no-op
+}
+
+async function pickProvider(title: string): Promise<ProviderId | undefined> {
+  const items = PROVIDER_IDS.map((id) => ({ label: PROVIDER_LABELS[id], id }));
+  const picked = await vscode.window.showQuickPick(items, { title, ignoreFocusOut: true });
+  return picked && isProviderId(picked.id) ? picked.id : undefined;
 }
 
 async function resolveTextToRead(): Promise<string | undefined> {
@@ -142,6 +162,62 @@ async function resolveTextToRead(): Promise<string | undefined> {
     // ignore clipboard errors
   }
   return undefined;
+}
+
+function buildProviderArgs(cfg: AppConfig, apiKey: string): ProviderArgs | undefined {
+  const catalog = CATALOGS[cfg.provider];
+  switch (cfg.provider) {
+    case "openai": {
+      const voice = getVoiceById(catalog, cfg.openai.voice);
+      if (!voice || !isVoiceAvailableForModel(voice, cfg.openai.model)) return undefined;
+      return {
+        provider: "openai",
+        apiKey,
+        baseUrl: cfg.openai.baseUrl,
+        model: cfg.openai.model,
+        voice: cfg.openai.voice,
+        format: cfg.openai.format,
+        instructions: cfg.openai.instructions,
+      };
+    }
+    case "minimax": {
+      const voice = getVoiceById(catalog, cfg.minimax.voice);
+      if (!voice || !isVoiceAvailableForModel(voice, cfg.minimax.model)) return undefined;
+      return {
+        provider: "minimax",
+        apiKey,
+        region: cfg.minimax.region,
+        model: cfg.minimax.model,
+        voice: cfg.minimax.voice,
+        format: cfg.minimax.format,
+        speed: cfg.minimax.speed,
+        sampleRate: cfg.minimax.sampleRate,
+        bitrate: cfg.minimax.bitrate,
+        languageBoost: cfg.minimax.languageBoost || undefined,
+      };
+    }
+    case "mimo": {
+      const voice = getVoiceById(catalog, cfg.mimo.voice);
+      if (!voice || !isVoiceAvailableForModel(voice, cfg.mimo.model)) return undefined;
+      return {
+        provider: "mimo",
+        apiKey,
+        baseUrl: cfg.mimo.baseUrl,
+        model: cfg.mimo.model,
+        voice: cfg.mimo.voice,
+        format: cfg.mimo.format,
+        stylePrompt: cfg.mimo.stylePrompt || undefined,
+      };
+    }
+  }
+}
+
+function describeVoice(cfg: AppConfig): string {
+  const catalog = CATALOGS[cfg.provider];
+  const voiceId =
+    cfg.provider === "openai" ? cfg.openai.voice : cfg.provider === "minimax" ? cfg.minimax.voice : cfg.mimo.voice;
+  const voice = getVoiceById(catalog, voiceId);
+  return voice?.name ?? voiceId;
 }
 
 function handleError(err: unknown, provider: VoiceStudioViewProvider): void {

@@ -1,34 +1,18 @@
+import { TTSApiError, type SynthesizeContext, type SynthesizeResult } from "./providers";
 import type { OpenAIResponseFormat, OpenAITTSModel } from "./openai-voices";
 
 const REQUEST_TIMEOUT_MS = 90_000;
 
-export interface SynthesizeArgs {
-  text: string;
+export interface OpenAISynthesizeArgs extends SynthesizeContext {
   apiKey: string;
   baseUrl: string;
   model: OpenAITTSModel;
   voice: string;
   format: OpenAIResponseFormat;
   instructions?: string;
-  signal?: AbortSignal;
 }
 
-export interface SynthesizeResult {
-  audioBase64: string;
-  format: OpenAIResponseFormat;
-}
-
-export class TTSApiError extends Error {
-  constructor(
-    message: string,
-    public readonly code: number,
-  ) {
-    super(message);
-    this.name = "TTSApiError";
-  }
-}
-
-export async function synthesizeSpeech(args: SynthesizeArgs): Promise<SynthesizeResult> {
+export async function synthesizeOpenAI(args: OpenAISynthesizeArgs): Promise<SynthesizeResult> {
   const text = args.text.trim();
   if (!text) {
     throw new TTSApiError("Text cannot be empty.", -1);

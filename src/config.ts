@@ -55,11 +55,14 @@ export interface MiMoConfig {
   format: MiMoFormat;
   baseUrl: string;
   stylePrompt: string;
+  openingStyleTags: string[];
+  audioEventTags: string[];
 }
 
 export interface AppConfig {
   provider: ProviderId;
   playbackRate: number;
+  chunkSize: number;
   openai: OpenAIConfig;
   minimax: MiniMaxConfig;
   mimo: MiMoConfig;
@@ -70,6 +73,7 @@ export function getConfig(): AppConfig {
   return {
     provider: normalizeProvider(cfg.get<string>("provider")),
     playbackRate: clampRate(cfg.get<number>("playbackRate") ?? cfg.get<number>("openai.playbackRate") ?? 1),
+    chunkSize: clampChunkSize(cfg.get<number>("chunkSize") ?? 250),
     openai: {
       model: normalizeOpenAIModel(cfg.get<string>("openai.model")),
       voice: cfg.get<string>("openai.voice")?.trim() || OPENAI_DEFAULT_VOICE,
@@ -93,8 +97,20 @@ export function getConfig(): AppConfig {
       format: normalizeMiMoFormat(cfg.get<string>("mimo.format")),
       baseUrl: cfg.get<string>("mimo.baseUrl")?.trim() || MIMO_DEFAULT_BASE_URL,
       stylePrompt: cfg.get<string>("mimo.stylePrompt")?.trim() || "",
+      openingStyleTags: normalizeTagList(cfg.get<string[]>("mimo.openingStyleTags")),
+      audioEventTags: normalizeTagList(cfg.get<string[]>("mimo.audioEventTags")),
     },
   };
+}
+
+export async function setMiMoOpeningStyleTags(tags: string[]): Promise<void> {
+  const cfg = vscode.workspace.getConfiguration(SECTION);
+  await cfg.update("mimo.openingStyleTags", tags, vscode.ConfigurationTarget.Global);
+}
+
+export async function setMiMoAudioEventTags(tags: string[]): Promise<void> {
+  const cfg = vscode.workspace.getConfiguration(SECTION);
+  await cfg.update("mimo.audioEventTags", tags, vscode.ConfigurationTarget.Global);
 }
 
 export async function setPlaybackRate(rate: number): Promise<void> {
@@ -160,4 +176,14 @@ function clampRate(rate: number): number {
 function clampMiniMaxSpeed(speed: number): number {
   if (!Number.isFinite(speed)) return 1;
   return Math.max(0.5, Math.min(2, speed));
+}
+
+function clampChunkSize(size: number): number {
+  if (!Number.isFinite(size)) return 250;
+  return Math.max(80, Math.min(2000, Math.round(size)));
+}
+
+function normalizeTagList(tags: string[] | undefined): string[] {
+  if (!Array.isArray(tags)) return [];
+  return Array.from(new Set(tags.map((t) => t?.trim()).filter((t): t is string => !!t)));
 }

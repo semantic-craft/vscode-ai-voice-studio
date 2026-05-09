@@ -10,6 +10,8 @@ export interface MiMoSynthesizeArgs extends SynthesizeContext {
   voice: string;
   format: MiMoFormat;
   stylePrompt?: string;
+  openingStyleTags?: string[];
+  audioEventTags?: string[];
 }
 
 interface MiMoResponse {
@@ -39,10 +41,11 @@ export async function synthesizeMiMo(args: MiMoSynthesizeArgs): Promise<Synthesi
     );
   }
 
+  const decoratedText = applyStyleTags(text, args.openingStyleTags, args.audioEventTags);
   const url = `${normalizeBaseUrl(args.baseUrl)}/chat/completions`;
   const body = {
     model: args.model,
-    messages: buildMessages(text, args.stylePrompt),
+    messages: buildMessages(decoratedText, args.stylePrompt),
     audio: { format: args.format, voice: args.voice },
     stream: false,
   };
@@ -91,6 +94,25 @@ export async function synthesizeMiMo(args: MiMoSynthesizeArgs): Promise<Synthesi
     clearTimeout(timeoutId);
     args.signal?.removeEventListener("abort", onAbort);
   }
+}
+
+function applyStyleTags(text: string, openingStyleTags?: string[], audioEventTags?: string[]): string {
+  const opening = normalizeTags(openingStyleTags);
+  const events = normalizeTags(audioEventTags);
+  if (opening.some(isSingingTag)) {
+    return `(唱歌)${text}`;
+  }
+  const stylePrefix = opening.length > 0 ? `(${opening.join(" ")})` : "";
+  const eventPrefix = events.length > 0 ? `（${events.join("，")}）` : "";
+  return `${stylePrefix}${eventPrefix}${text}`;
+}
+
+function normalizeTags(tags: string[] | undefined): string[] {
+  return Array.from(new Set((tags ?? []).map((tag) => tag.trim()).filter(Boolean)));
+}
+
+function isSingingTag(tag: string): boolean {
+  return ["唱歌", "sing", "singing"].includes(tag.toLowerCase());
 }
 
 function buildMessages(text: string, stylePrompt: string | undefined): Array<{ role: "user" | "assistant"; content: string }> {

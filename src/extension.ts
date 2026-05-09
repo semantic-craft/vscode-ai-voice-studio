@@ -1,5 +1,12 @@
 import * as vscode from "vscode";
-import { getConfig, setProvider, setProviderModel, setProviderVoice, type AppConfig } from "./config";
+import {
+  getConfig,
+  setMiMoOpeningStyleTags,
+  setProvider,
+  setProviderModel,
+  setProviderVoice,
+  type AppConfig,
+} from "./config";
 import {
   PROVIDER_IDS,
   PROVIDER_LABELS,
@@ -10,16 +17,20 @@ import {
   type ProviderId,
 } from "./core/providers";
 import { CATALOGS, synthesize, type ProviderArgs } from "./core/synthesize";
+import { chunkText } from "./core/text-chunker";
+import { runPlaybackSession } from "./core/playback-session";
 import { SecretsStore } from "./secrets";
 import { VoiceStudioViewProvider } from "./webview-view-provider";
 
 class PlaybackController {
   private current: AbortController | null = null;
+  private sessionCounter = 0;
 
-  begin(): AbortSignal {
+  begin(): { signal: AbortSignal; sessionId: number } {
     this.current?.abort();
     this.current = new AbortController();
-    return this.current.signal;
+    this.sessionCounter += 1;
+    return { signal: this.current.signal, sessionId: this.sessionCounter };
   }
 
   abort(): void {
@@ -56,6 +67,9 @@ export function activate(context: vscode.ExtensionContext): void {
       case "modelChanged":
         void setProviderModel(msg.provider, msg.model).then(() => provider.postConfig(getConfig()));
         return;
+      case "mimoStyleTagsChanged":
+        void setMiMoOpeningStyleTags(msg.tags);
+        return;
     }
   });
 
@@ -81,13 +95,34 @@ export function activate(context: vscode.ExtensionContext): void {
 
     const voiceLabel = describeVoice(cfg);
     provider.reveal();
-    provider.postStatus(`Synthesizing with ${PROVIDER_LABELS[cfg.provider]} · ${voiceLabel}…`);
 
-    const signal = playback.begin();
+    const chunks = chunkText(trimmed, { maxChars: cfg.chunkSize });
+    if (chunks.length === 0) return;
+
+    const { signal, sessionId } = playback.begin();
+    provider.postSessionStart(sessionId, chunks.length);
+    provider.postStatus(
+      chunks.length === 1
+        ? `Synthesizing with ${PROVIDER_LABELS[cfg.provider]} · ${voiceLabel}…`
+        : `Synthesizing ${chunks.length} chunks with ${PROVIDER_LABELS[cfg.provider]} · ${voiceLabel}…`,
+    );
+
     try {
-      const result = await synthesize({ text: trimmed, signal }, args);
-      provider.postPlay(result.audioBase64, result.format, cfg.playbackRate, `${source} · ${voiceLabel}`);
+      const result = await runPlaybackSession(
+        chunks,
+        (chunkText, chunkSignal) => synthesize({ text: chunkText, signal: chunkSignal }, args),
+        ({ index, total, result: out }) => {
+          const label =
+            total > 1
+              ? `${source} · ${voiceLabel} · ${index + 1}/${total}`
+              : `${source} · ${voiceLabel}`;
+          provider.postPlay(sessionId, index, total, out.audioBase64, out.format, cfg.playbackRate, label);
+        },
+        signal,
+      );
+      provider.postSessionEnd(sessionId, result.cancelled);
     } catch (err) {
+      provider.postSessionEnd(sessionId, true);
       handleError(err, provider);
     }
   }
@@ -207,6 +242,8 @@ function buildProviderArgs(cfg: AppConfig, apiKey: string): ProviderArgs | undef
         voice: cfg.mimo.voice,
         format: cfg.mimo.format,
         stylePrompt: cfg.mimo.stylePrompt || undefined,
+        openingStyleTags: cfg.mimo.openingStyleTags.length ? cfg.mimo.openingStyleTags : undefined,
+        audioEventTags: cfg.mimo.audioEventTags.length ? cfg.mimo.audioEventTags : undefined,
       };
     }
   }

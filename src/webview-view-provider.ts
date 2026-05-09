@@ -2,6 +2,7 @@ import * as vscode from "vscode";
 import { getConfig, setPlaybackRate, type AppConfig } from "./config";
 import { CATALOGS } from "./core/synthesize";
 import { PROVIDER_IDS, PROVIDER_LABELS, type ProviderId } from "./core/providers";
+import { STYLE_TAG_PRESETS } from "./core/mimo-voices";
 
 type IncomingMessage =
   | { type: "ready" }
@@ -11,7 +12,8 @@ type IncomingMessage =
   | { type: "rateChanged"; rate: number }
   | { type: "providerChanged"; provider: ProviderId }
   | { type: "voiceChanged"; provider: ProviderId; voice: string }
-  | { type: "modelChanged"; provider: ProviderId; model: string };
+  | { type: "modelChanged"; provider: ProviderId; model: string }
+  | { type: "mimoStyleTagsChanged"; tags: string[] };
 
 export type StudioMessageHandler = (msg: IncomingMessage) => void;
 
@@ -31,8 +33,33 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
     return this.view !== undefined;
   }
 
-  postPlay(audioBase64: string, format: string, playbackRate: number, label?: string): void {
-    this.view?.webview.postMessage({ type: "play", audioBase64, format, playbackRate, label });
+  postPlay(
+    sessionId: number,
+    chunkIndex: number,
+    totalChunks: number,
+    audioBase64: string,
+    format: string,
+    playbackRate: number,
+    label?: string,
+  ): void {
+    this.view?.webview.postMessage({
+      type: "play",
+      sessionId,
+      chunkIndex,
+      totalChunks,
+      audioBase64,
+      format,
+      playbackRate,
+      label,
+    });
+  }
+
+  postSessionStart(sessionId: number, totalChunks: number): void {
+    this.view?.webview.postMessage({ type: "sessionStart", sessionId, totalChunks });
+  }
+
+  postSessionEnd(sessionId: number, cancelled: boolean): void {
+    this.view?.webview.postMessage({ type: "sessionEnd", sessionId, cancelled });
   }
 
   postStop(): void {
@@ -99,6 +126,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
 
     const initialConfigJson = JSON.stringify(serializeConfig(cfg));
     const catalogsJson = JSON.stringify(serializeCatalogs());
+    const styleTagsJson = JSON.stringify(STYLE_TAG_PRESETS);
 
     return /* html */ `<!DOCTYPE html>
 <html lang="en">
@@ -184,6 +212,27 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
     }
     button.secondary:hover { background: var(--vscode-button-secondaryHoverBackground); }
     button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 4px;
+      flex: 1;
+    }
+    .chip {
+      padding: 2px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--vscode-dropdown-border);
+      background: transparent;
+      color: var(--vscode-foreground);
+      font-size: 0.85em;
+      cursor: pointer;
+      flex: 0 0 auto;
+    }
+    .chip[data-active="true"] {
+      background: var(--vscode-button-background);
+      color: var(--vscode-button-foreground);
+      border-color: var(--vscode-button-background);
+    }
     .status {
       margin-top: 10px;
       padding: 6px 8px;
@@ -213,10 +262,11 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       border-radius: 3px;
     }
     audio { display: none; }
+    .hidden { display: none !important; }
   </style>
 </head>
 <body>
-  <h1>AI Voice Studio <span class="badge" id="providerBadge">M2</span></h1>
+  <h1>AI Voice Studio <span class="badge" id="providerBadge">M3</span></h1>
 
   <div class="row">
     <label for="provider">Provider</label>
@@ -230,6 +280,10 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
     <label for="voice">Voice</label>
     <select id="voice"></select>
   </div>
+  <div class="row" id="styleRow">
+    <label>Style</label>
+    <div class="chips" id="styleChips"></div>
+  </div>
   <div class="row">
     <label for="rate">Speed</label>
     <input id="rate" type="range" min="0.5" max="4" step="0.05" />
@@ -239,12 +293,12 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
   <textarea id="text" placeholder="Type or paste text to read. Or use Cmd+Alt+R / Ctrl+Alt+R on a selection in the editor."></textarea>
 
   <div class="button-row">
-    <button id="read">▶ Read</button>
+    <button id="primary">▶ Read</button>
     <button id="stop" class="secondary">⏹ Stop</button>
   </div>
 
   <div class="status" id="status" data-tone="muted">Idle.</div>
-  <div class="hint">Set keys via <code>AI Voice Studio: Set API Key</code>. Provider-specific knobs (instructions, region, baseUrl…) live in <code>settings.json</code>.</div>
+  <div class="hint">Long text auto-chunks (synthesizes ahead while playing). Set keys via <code>AI Voice Studio: Set API Key</code>.</div>
 
   <audio id="player"></audio>
 
@@ -252,18 +306,25 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
     (function () {
       const vscode = acquireVsCodeApi();
       const CATALOGS = ${catalogsJson};
+      const STYLE_TAGS = ${styleTagsJson};
 
       let state = ${initialConfigJson};
+      let mode = "idle"; // idle | playing | paused
+      let activeSession = null; // { id, total }
+      let sessionDone = false;
+      const queue = []; // { sessionId, chunkIndex, totalChunks, audioBase64, format, label }
 
       const els = {
         provider:     document.getElementById("provider"),
         providerBadge:document.getElementById("providerBadge"),
         model:        document.getElementById("model"),
         voice:        document.getElementById("voice"),
+        styleRow:     document.getElementById("styleRow"),
+        styleChips:   document.getElementById("styleChips"),
         rate:         document.getElementById("rate"),
         rateValue:    document.getElementById("rateValue"),
         text:         document.getElementById("text"),
-        read:         document.getElementById("read"),
+        primary:      document.getElementById("primary"),
         stop:         document.getElementById("stop"),
         status:       document.getElementById("status"),
         player:       document.getElementById("player"),
@@ -274,7 +335,36 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         els.status.dataset.tone = tone || "info";
       }
 
-      function setBusy(busy) { els.read.disabled = busy; }
+      function setMode(next) {
+        mode = next;
+        if (mode === "playing") {
+          els.primary.textContent = "⏸ Pause";
+          els.primary.disabled = false;
+        } else if (mode === "paused") {
+          els.primary.textContent = "▶ Resume";
+          els.primary.disabled = false;
+        } else {
+          els.primary.textContent = "▶ Read";
+          els.primary.disabled = false;
+        }
+      }
+
+      function resetSession() {
+        queue.length = 0;
+        activeSession = null;
+        sessionDone = false;
+        els.player.pause();
+        els.player.removeAttribute("src");
+        els.player.load();
+      }
+
+      function activeCatalog() {
+        return CATALOGS.find((p) => p.id === state.provider) || CATALOGS[0];
+      }
+
+      function activeProviderState() {
+        return state[state.provider] || {};
+      }
 
       function renderProviderOptions() {
         els.provider.innerHTML = "";
@@ -285,14 +375,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
           if (p.id === state.provider) opt.selected = true;
           els.provider.appendChild(opt);
         }
-      }
-
-      function activeCatalog() {
-        return CATALOGS.find((p) => p.id === state.provider) || CATALOGS[0];
-      }
-
-      function activeProviderState() {
-        return state[state.provider] || {};
       }
 
       function renderModelOptions() {
@@ -322,6 +404,35 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         }
       }
 
+      function renderStyleChips() {
+        if (state.provider !== "mimo") {
+          els.styleRow.classList.add("hidden");
+          return;
+        }
+        els.styleRow.classList.remove("hidden");
+        const active = new Set((state.mimo && state.mimo.openingStyleTags) || []);
+        els.styleChips.innerHTML = "";
+        for (const tag of STYLE_TAGS) {
+          const chip = document.createElement("button");
+          chip.className = "chip";
+          chip.textContent = tag.label;
+          chip.dataset.active = active.has(tag.id) ? "true" : "false";
+          chip.dataset.tag = tag.id;
+          chip.addEventListener("click", () => toggleStyleTag(tag.id));
+          els.styleChips.appendChild(chip);
+        }
+      }
+
+      function toggleStyleTag(id) {
+        const current = new Set((state.mimo && state.mimo.openingStyleTags) || []);
+        if (current.has(id)) current.delete(id); else current.add(id);
+        const next = Array.from(current);
+        if (!state.mimo) state.mimo = {};
+        state.mimo.openingStyleTags = next;
+        renderStyleChips();
+        vscode.postMessage({ type: "mimoStyleTagsChanged", tags: next });
+      }
+
       function renderRate() {
         const rate = state.playbackRate || 1;
         els.rate.value = String(rate);
@@ -331,15 +442,38 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
 
       function renderBadge() {
         const label = (CATALOGS.find((p) => p.id === state.provider) || {}).label || state.provider;
-        els.providerBadge.textContent = "M2 · " + label;
+        els.providerBadge.textContent = "M3 · " + label;
       }
 
       function renderAll() {
         renderProviderOptions();
         renderModelOptions();
         renderVoiceOptions();
+        renderStyleChips();
         renderRate();
         renderBadge();
+      }
+
+      function startNextChunk() {
+        if (mode !== "playing" && mode !== "idle") return;
+        if (queue.length === 0) {
+          if (sessionDone) {
+            setMode("idle");
+            setStatus("Done.");
+            activeSession = null;
+          }
+          return;
+        }
+        const next = queue.shift();
+        els.player.src = "data:audio/" + next.format + ";base64," + next.audioBase64;
+        els.player.playbackRate = parseFloat(els.rate.value);
+        els.player.play().then(function () {
+          setMode("playing");
+          setStatus(next.label ? "Playing — " + next.label : "Playing.");
+        }).catch(function (err) {
+          setMode("idle");
+          setStatus("Playback failed: " + (err && err.message || err), "error");
+        });
       }
 
       els.provider.addEventListener("change", () => {
@@ -347,6 +481,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         state.provider = next;
         renderModelOptions();
         renderVoiceOptions();
+        renderStyleChips();
         renderBadge();
         vscode.postMessage({ type: "providerChanged", provider: next });
       });
@@ -372,52 +507,84 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         vscode.postMessage({ type: "rateChanged", rate: rate });
       });
 
-      els.read.addEventListener("click", () => {
+      els.primary.addEventListener("click", () => {
+        if (mode === "playing") {
+          els.player.pause();
+          setMode("paused");
+          setStatus("Paused.");
+          return;
+        }
+        if (mode === "paused") {
+          els.player.play().then(() => {
+            setMode("playing");
+            setStatus("Playing.");
+          }).catch(function (err) {
+            setStatus("Resume failed: " + (err && err.message || err), "error");
+          });
+          return;
+        }
         const text = els.text.value.trim();
         if (!text) {
           setStatus("Type or paste text first.", "error");
           return;
         }
-        setBusy(true);
+        resetSession();
+        setMode("playing"); // optimistic; will switch to idle on error
         setStatus("Synthesizing…");
         vscode.postMessage({ type: "requestRead", text: text });
       });
 
       els.stop.addEventListener("click", () => {
-        els.player.pause();
-        els.player.currentTime = 0;
-        setBusy(false);
+        resetSession();
+        setMode("idle");
         setStatus("Stopped.");
         vscode.postMessage({ type: "requestStop" });
       });
 
-      els.player.addEventListener("ended", () => { setBusy(false); setStatus("Done."); });
-      els.player.addEventListener("error", () => { setBusy(false); setStatus("Audio decode failed.", "error"); });
+      els.player.addEventListener("ended", () => {
+        startNextChunk();
+      });
+      els.player.addEventListener("error", () => {
+        setMode("idle");
+        setStatus("Audio decode failed.", "error");
+      });
 
       window.addEventListener("message", (event) => {
         const msg = event.data;
         if (!msg) return;
         switch (msg.type) {
-          case "play": {
-            const src = "data:audio/" + msg.format + ";base64," + msg.audioBase64;
-            els.player.src = src;
-            els.player.playbackRate = parseFloat(els.rate.value);
-            els.player.play().then(function () {
-              setStatus(msg.label ? "Playing — " + msg.label : "Playing.");
-            }).catch(function (err) {
-              setBusy(false);
-              setStatus("Playback failed: " + (err && err.message || err), "error");
-            });
+          case "sessionStart":
+            resetSession();
+            activeSession = { id: msg.sessionId, total: msg.totalChunks };
+            sessionDone = false;
+            setMode("playing");
             break;
-          }
+          case "play":
+            if (!activeSession || msg.sessionId !== activeSession.id) break;
+            queue.push(msg);
+            if (els.player.paused && mode !== "paused") {
+              startNextChunk();
+            }
+            break;
+          case "sessionEnd":
+            if (!activeSession || msg.sessionId !== activeSession.id) break;
+            sessionDone = true;
+            if (msg.cancelled) {
+              resetSession();
+              setMode("idle");
+              setStatus("Cancelled.", "muted");
+            } else if (queue.length === 0 && els.player.paused && mode !== "paused") {
+              setMode("idle");
+              setStatus("Done.");
+              activeSession = null;
+            }
+            break;
           case "stop":
-            els.player.pause();
-            els.player.currentTime = 0;
-            setBusy(false);
+            resetSession();
+            setMode("idle");
             setStatus("Stopped.");
             break;
           case "status":
-            setBusy((msg.status || "").toLowerCase().indexOf("synthesiz") === 0);
             setStatus(msg.status, msg.tone);
             break;
           case "config":
@@ -428,8 +595,9 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       });
 
       renderAll();
+      setMode("idle");
       vscode.postMessage({ type: "ready" });
-      vscode.postMessage({ type: "log", payload: "M2 webview ready" });
+      vscode.postMessage({ type: "log", payload: "M3 webview ready" });
     })();
   </script>
 </body>
@@ -442,7 +610,7 @@ interface SerializedConfig {
   playbackRate: number;
   openai: { model: string; voice: string };
   minimax: { model: string; voice: string };
-  mimo: { model: string; voice: string };
+  mimo: { model: string; voice: string; openingStyleTags: string[] };
 }
 
 interface SerializedCatalog {
@@ -458,7 +626,11 @@ function serializeConfig(cfg: AppConfig): SerializedConfig {
     playbackRate: cfg.playbackRate,
     openai: { model: cfg.openai.model, voice: cfg.openai.voice },
     minimax: { model: cfg.minimax.model, voice: cfg.minimax.voice },
-    mimo: { model: cfg.mimo.model, voice: cfg.mimo.voice },
+    mimo: {
+      model: cfg.mimo.model,
+      voice: cfg.mimo.voice,
+      openingStyleTags: cfg.mimo.openingStyleTags,
+    },
   };
 }
 

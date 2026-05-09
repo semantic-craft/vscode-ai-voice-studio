@@ -1,8 +1,8 @@
 {
   "name": "ai-voice-studio",
   "displayName": "AI Voice Studio",
-  "description": "Read text aloud in VS Code with MiniMax, MiMo, and OpenAI TTS — speed, voice, and style controls in the sidebar.",
-  "version": "0.0.1",
+  "description": "Read text aloud in VS Code with OpenAI TTS (and soon MiniMax + MiMo) — speed, voice, and style controls in the sidebar.",
+  "version": "0.1.0",
   "publisher": "xianwei-zhang",
   "license": "MIT",
   "engines": {
@@ -16,12 +16,14 @@
     "text-to-speech",
     "speech",
     "voice",
+    "openai",
     "minimax",
-    "mimo",
-    "openai"
+    "mimo"
   ],
   "main": "./out/extension.js",
-  "activationEvents": [],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -43,16 +45,101 @@
     },
     "commands": [
       {
-        "command": "aiVoiceStudio.helloWorld",
-        "title": "AI Voice Studio: Hello World",
+        "command": "aiVoiceStudio.quickRead",
+        "title": "Read Selection (or Clipboard)",
+        "category": "AI Voice Studio"
+      },
+      {
+        "command": "aiVoiceStudio.stop",
+        "title": "Stop Reading",
+        "category": "AI Voice Studio"
+      },
+      {
+        "command": "aiVoiceStudio.setOpenAIApiKey",
+        "title": "Set OpenAI API Key",
+        "category": "AI Voice Studio"
+      },
+      {
+        "command": "aiVoiceStudio.clearOpenAIApiKey",
+        "title": "Clear OpenAI API Key",
         "category": "AI Voice Studio"
       },
       {
         "command": "aiVoiceStudio.focusView",
-        "title": "AI Voice Studio: Focus Sidebar",
+        "title": "Focus Sidebar",
         "category": "AI Voice Studio"
       }
-    ]
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "aiVoiceStudio.quickRead",
+          "when": "editorHasSelection",
+          "group": "1_modification@99"
+        }
+      ]
+    },
+    "keybindings": [
+      {
+        "command": "aiVoiceStudio.quickRead",
+        "key": "ctrl+alt+r",
+        "mac": "cmd+alt+r",
+        "when": "editorTextFocus"
+      },
+      {
+        "command": "aiVoiceStudio.stop",
+        "key": "ctrl+alt+s",
+        "mac": "cmd+alt+s"
+      }
+    ],
+    "configuration": {
+      "title": "AI Voice Studio",
+      "properties": {
+        "aiVoiceStudio.openai.model": {
+          "type": "string",
+          "enum": ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"],
+          "enumDescriptions": [
+            "GPT-4o Mini TTS — supports speaking instructions",
+            "TTS-1 — legacy model, faster",
+            "TTS-1 HD — legacy model, higher quality"
+          ],
+          "default": "gpt-4o-mini-tts",
+          "description": "OpenAI text-to-speech model."
+        },
+        "aiVoiceStudio.openai.voice": {
+          "type": "string",
+          "enum": [
+            "cedar", "marin", "coral", "alloy", "ash", "ballad", "echo",
+            "fable", "nova", "onyx", "sage", "shimmer", "verse"
+          ],
+          "default": "cedar",
+          "description": "Default OpenAI voice."
+        },
+        "aiVoiceStudio.openai.format": {
+          "type": "string",
+          "enum": ["mp3", "wav"],
+          "default": "mp3",
+          "description": "Audio response format."
+        },
+        "aiVoiceStudio.openai.playbackRate": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 4,
+          "default": 1,
+          "description": "Playback rate (0.5–4.0). Adjusts player speed without re-synthesis."
+        },
+        "aiVoiceStudio.openai.instructions": {
+          "type": "string",
+          "default": "",
+          "description": "Speaking instructions (gpt-4o-mini-tts only). Example: 'Read naturally and clearly; preserve Chinese and English pronunciation.'"
+        },
+        "aiVoiceStudio.openai.baseUrl": {
+          "type": "string",
+          "default": "https://api.openai.com/v1",
+          "description": "OpenAI-compatible base URL."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

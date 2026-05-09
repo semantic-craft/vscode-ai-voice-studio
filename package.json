@@ -2,7 +2,7 @@
   "name": "ai-voice-studio",
   "displayName": "AI Voice Studio",
   "description": "Read text aloud in VS Code with OpenAI, MiniMax, and MiMo TTS — speed, voice, and provider switching from the sidebar.",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "publisher": "xianwei-zhang",
   "license": "MIT",
   "engines": {

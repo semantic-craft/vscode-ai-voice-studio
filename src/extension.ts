@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import {
   getConfig,
+  setMiMoAudioEventTags,
   setMiMoOpeningStyleTags,
   setProvider,
   setProviderModel,
@@ -39,12 +40,59 @@ class PlaybackController {
   }
 }
 
+type StatusBarMode =
+  | { kind: "idle" }
+  | { kind: "synth" }
+  | { kind: "playing"; index: number; total: number }
+  | { kind: "error" };
+
+class StatusBar {
+  private item: vscode.StatusBarItem;
+
+  constructor() {
+    this.item = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
+    this.item.command = "aiVoiceStudio.focusView";
+    this.set({ kind: "idle" });
+    this.item.show();
+  }
+
+  set(mode: StatusBarMode): void {
+    switch (mode.kind) {
+      case "idle":
+        this.item.text = "$(unmute) Voice Studio";
+        this.item.tooltip = "AI Voice Studio — click to open the sidebar.";
+        break;
+      case "synth":
+        this.item.text = "$(loading~spin) Synthesizing…";
+        this.item.tooltip = "AI Voice Studio — synthesizing audio.";
+        break;
+      case "playing":
+        this.item.text =
+          mode.total > 1
+            ? `$(record) Voice ${mode.index}/${mode.total}`
+            : "$(record) Voice";
+        this.item.tooltip = "AI Voice Studio — playing.";
+        break;
+      case "error":
+        this.item.text = "$(error) Voice Studio";
+        this.item.tooltip = "AI Voice Studio — last action failed.";
+        break;
+    }
+  }
+
+  dispose(): void {
+    this.item.dispose();
+  }
+}
+
 export function activate(context: vscode.ExtensionContext): void {
   const provider = new VoiceStudioViewProvider(context.extensionUri);
   const secrets = new SecretsStore(context.secrets);
   const playback = new PlaybackController();
+  const statusBar = new StatusBar();
 
   context.subscriptions.push(
+    statusBar,
     vscode.window.registerWebviewViewProvider(VoiceStudioViewProvider.viewType, provider, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
@@ -57,6 +105,10 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       case "requestStop":
         playback.abort();
+        statusBar.set({ kind: "idle" });
+        return;
+      case "requestSetKey":
+        void vscode.commands.executeCommand("aiVoiceStudio.setApiKey");
         return;
       case "providerChanged":
         void setProvider(msg.provider).then(() => provider.postConfig(getConfig()));
@@ -69,6 +121,9 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       case "mimoStyleTagsChanged":
         void setMiMoOpeningStyleTags(msg.tags);
+        return;
+      case "mimoAudioEventTagsChanged":
+        void setMiMoAudioEventTags(msg.tags);
         return;
     }
   });
@@ -83,13 +138,19 @@ export function activate(context: vscode.ExtensionContext): void {
     const cfg = getConfig();
     const apiKey = await secrets.ensure(cfg.provider);
     if (!apiKey) {
-      provider.postStatus(`${PROVIDER_LABELS[cfg.provider]} API key not set.`, "error");
+      provider.postStatus(
+        `${PROVIDER_LABELS[cfg.provider]} API key not set.`,
+        "error",
+        { id: "requestSetKey", label: "Set API Key" },
+      );
+      statusBar.set({ kind: "error" });
       return;
     }
 
     const args = buildProviderArgs(cfg, apiKey);
     if (!args) {
       provider.postStatus(`Invalid voice/model for ${PROVIDER_LABELS[cfg.provider]}.`, "error");
+      statusBar.set({ kind: "error" });
       return;
     }
 
@@ -101,6 +162,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
     const { signal, sessionId } = playback.begin();
     provider.postSessionStart(sessionId, chunks.length);
+    statusBar.set({ kind: "synth" });
     provider.postStatus(
       chunks.length === 1
         ? `Synthesizing with ${PROVIDER_LABELS[cfg.provider]} · ${voiceLabel}…`
@@ -117,12 +179,15 @@ export function activate(context: vscode.ExtensionContext): void {
               ? `${source} · ${voiceLabel} · ${index + 1}/${total}`
               : `${source} · ${voiceLabel}`;
           provider.postPlay(sessionId, index, total, out.audioBase64, out.format, cfg.playbackRate, label);
+          statusBar.set({ kind: "playing", index: index + 1, total });
         },
         signal,
       );
       provider.postSessionEnd(sessionId, result.cancelled);
+      statusBar.set({ kind: "idle" });
     } catch (err) {
       provider.postSessionEnd(sessionId, true);
+      statusBar.set({ kind: "error" });
       handleError(err, provider);
     }
   }
@@ -141,6 +206,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand("aiVoiceStudio.stop", () => {
       playback.abort();
       provider.postStop();
+      statusBar.set({ kind: "idle" });
     }),
     vscode.commands.registerCommand("aiVoiceStudio.setApiKey", async () => {
       const choice = await pickProvider("Set API key for…");
@@ -154,6 +220,9 @@ export function activate(context: vscode.ExtensionContext): void {
       if (!value) return;
       await secrets.set(choice, value.trim());
       vscode.window.showInformationMessage(`AI Voice Studio: ${PROVIDER_LABELS[choice]} API key saved.`);
+      if (provider.isReady()) {
+        provider.postStatus(`${PROVIDER_LABELS[choice]} API key saved.`, "info");
+      }
     }),
     vscode.commands.registerCommand("aiVoiceStudio.clearApiKey", async () => {
       const choice = await pickProvider("Clear API key for…");

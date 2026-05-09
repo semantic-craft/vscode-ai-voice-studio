@@ -2,7 +2,7 @@
   "name": "ai-voice-studio",
   "displayName": "AI Voice Studio",
   "description": "Read text aloud in VS Code with OpenAI, MiniMax, and MiMo TTS — speed, voice, and provider switching from the sidebar.",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "publisher": "xianwei-zhang",
   "license": "MIT",
   "engines": {
@@ -108,6 +108,13 @@
           "default": 1,
           "description": "Playback rate (0.5–4.0). Adjusts player speed without re-synthesis."
         },
+        "aiVoiceStudio.chunkSize": {
+          "type": "number",
+          "minimum": 80,
+          "maximum": 2000,
+          "default": 250,
+          "description": "Maximum characters per synthesis chunk. Long text is split at sentence boundaries; the next chunk synthesizes while the current one plays."
+        },
         "aiVoiceStudio.openai.model": {
           "type": "string",
           "enum": ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"],
@@ -211,6 +218,18 @@
           "type": "string",
           "default": "",
           "description": "MiMo style prompt prepended as a user message (controls tone/emotion)."
+        },
+        "aiVoiceStudio.mimo.openingStyleTags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "MiMo opening style tags injected as a leading prefix (e.g. '开心', '严肃', '兴奋'). The 唱歌 tag overrides others."
+        },
+        "aiVoiceStudio.mimo.audioEventTags": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "MiMo audio event tags injected as a Chinese-bracket prefix (e.g. '笑声', '叹息')."
         }
       }
     }

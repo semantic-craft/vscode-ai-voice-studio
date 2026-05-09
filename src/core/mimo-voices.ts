@@ -31,6 +31,20 @@ export const VOICES: VoiceConfig[] = [
   { id: "default_en",   name: "MiMo English Female", category: "Legacy", description: "Legacy MiMo-V2 English female voice.",       models: V2_ONLY },
 ];
 
+export interface StyleTagPreset {
+  id: string;
+  label: string;
+}
+
+export const STYLE_TAG_PRESETS: StyleTagPreset[] = [
+  { id: "开心", label: "开心" },
+  { id: "难过", label: "难过" },
+  { id: "严肃", label: "严肃" },
+  { id: "平静", label: "平静" },
+  { id: "兴奋", label: "兴奋" },
+  { id: "唱歌", label: "唱歌" },
+];
+
 export const MIMO_CATALOG: ProviderCatalog = {
   id: "mimo",
   label: "MiMo",

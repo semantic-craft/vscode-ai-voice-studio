@@ -1,8 +1,8 @@
 {
   "name": "ai-voice-studio",
   "displayName": "AI Voice Studio",
-  "description": "Read text aloud in VS Code with OpenAI TTS (and soon MiniMax + MiMo) — speed, voice, and style controls in the sidebar.",
-  "version": "0.1.0",
+  "description": "Read text aloud in VS Code with OpenAI, MiniMax, and MiMo TTS — speed, voice, and provider switching from the sidebar.",
+  "version": "0.2.0",
   "publisher": "xianwei-zhang",
   "license": "MIT",
   "engines": {
@@ -55,13 +55,13 @@
         "category": "AI Voice Studio"
       },
       {
-        "command": "aiVoiceStudio.setOpenAIApiKey",
-        "title": "Set OpenAI API Key",
+        "command": "aiVoiceStudio.setApiKey",
+        "title": "Set API Key…",
         "category": "AI Voice Studio"
       },
       {
-        "command": "aiVoiceStudio.clearOpenAIApiKey",
-        "title": "Clear OpenAI API Key",
+        "command": "aiVoiceStudio.clearApiKey",
+        "title": "Clear API Key…",
         "category": "AI Voice Studio"
       },
       {
@@ -95,6 +95,19 @@
     "configuration": {
       "title": "AI Voice Studio",
       "properties": {
+        "aiVoiceStudio.provider": {
+          "type": "string",
+          "enum": ["openai", "minimax", "mimo"],
+          "default": "openai",
+          "description": "Active TTS provider."
+        },
+        "aiVoiceStudio.playbackRate": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 4,
+          "default": 1,
+          "description": "Playback rate (0.5–4.0). Adjusts player speed without re-synthesis."
+        },
         "aiVoiceStudio.openai.model": {
           "type": "string",
           "enum": ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"],
@@ -108,10 +121,6 @@
         },
         "aiVoiceStudio.openai.voice": {
           "type": "string",
-          "enum": [
-            "cedar", "marin", "coral", "alloy", "ash", "ballad", "echo",
-            "fable", "nova", "onyx", "sage", "shimmer", "verse"
-          ],
           "default": "cedar",
           "description": "Default OpenAI voice."
         },
@@ -119,24 +128,89 @@
           "type": "string",
           "enum": ["mp3", "wav"],
           "default": "mp3",
-          "description": "Audio response format."
-        },
-        "aiVoiceStudio.openai.playbackRate": {
-          "type": "number",
-          "minimum": 0.5,
-          "maximum": 4,
-          "default": 1,
-          "description": "Playback rate (0.5–4.0). Adjusts player speed without re-synthesis."
+          "description": "OpenAI audio response format."
         },
         "aiVoiceStudio.openai.instructions": {
           "type": "string",
           "default": "",
-          "description": "Speaking instructions (gpt-4o-mini-tts only). Example: 'Read naturally and clearly; preserve Chinese and English pronunciation.'"
+          "description": "Speaking instructions (gpt-4o-mini-tts only). Example: 'Read naturally; preserve Chinese and English pronunciation.'"
         },
         "aiVoiceStudio.openai.baseUrl": {
           "type": "string",
           "default": "https://api.openai.com/v1",
           "description": "OpenAI-compatible base URL."
+        },
+        "aiVoiceStudio.minimax.model": {
+          "type": "string",
+          "enum": ["speech-2.8-hd", "speech-2.6-hd", "speech-02-hd"],
+          "default": "speech-2.8-hd",
+          "description": "MiniMax T2A model."
+        },
+        "aiVoiceStudio.minimax.voice": {
+          "type": "string",
+          "default": "Chinese (Mandarin)_Radio_Host",
+          "description": "Default MiniMax voice ID."
+        },
+        "aiVoiceStudio.minimax.format": {
+          "type": "string",
+          "enum": ["mp3", "wav"],
+          "default": "mp3",
+          "description": "MiniMax audio output format."
+        },
+        "aiVoiceStudio.minimax.region": {
+          "type": "string",
+          "enum": ["mainland", "global"],
+          "default": "mainland",
+          "description": "MiniMax API region (mainland: api.minimaxi.com, global: api.minimax.io)."
+        },
+        "aiVoiceStudio.minimax.speed": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 2,
+          "default": 1,
+          "description": "MiniMax synthesis speed (0.5–2.0). Server-side; affects pacing/prosody."
+        },
+        "aiVoiceStudio.minimax.sampleRate": {
+          "type": "number",
+          "default": 32000,
+          "description": "MiniMax audio sample rate (Hz)."
+        },
+        "aiVoiceStudio.minimax.bitrate": {
+          "type": "number",
+          "default": 128000,
+          "description": "MiniMax audio bitrate."
+        },
+        "aiVoiceStudio.minimax.languageBoost": {
+          "type": "string",
+          "default": "",
+          "description": "MiniMax language boost hint (e.g. 'Chinese' or 'English'). Optional."
+        },
+        "aiVoiceStudio.mimo.model": {
+          "type": "string",
+          "enum": ["mimo-v2.5-tts", "mimo-v2-tts"],
+          "default": "mimo-v2.5-tts",
+          "description": "MiMo TTS model."
+        },
+        "aiVoiceStudio.mimo.voice": {
+          "type": "string",
+          "default": "mimo_default",
+          "description": "Default MiMo voice ID."
+        },
+        "aiVoiceStudio.mimo.format": {
+          "type": "string",
+          "enum": ["mp3", "wav"],
+          "default": "wav",
+          "description": "MiMo audio output format."
+        },
+        "aiVoiceStudio.mimo.baseUrl": {
+          "type": "string",
+          "default": "https://token-plan-cn.xiaomimimo.com/v1",
+          "description": "MiMo Token Plan base URL."
+        },
+        "aiVoiceStudio.mimo.stylePrompt": {
+          "type": "string",
+          "default": "",
+          "description": "MiMo style prompt prepended as a user message (controls tone/emotion)."
         }
       }
     }

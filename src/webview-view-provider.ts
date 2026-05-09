@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
-import { getOpenAIConfig, setPlaybackRate } from "./config";
-import { VOICES, MODEL_LABELS, type OpenAITTSModel } from "./core/openai-voices";
+import { getConfig, setPlaybackRate, type AppConfig } from "./config";
+import { CATALOGS } from "./core/synthesize";
+import { PROVIDER_IDS, PROVIDER_LABELS, type ProviderId } from "./core/providers";
 
 type IncomingMessage =
   | { type: "ready" }
@@ -8,8 +9,9 @@ type IncomingMessage =
   | { type: "requestRead"; text: string }
   | { type: "requestStop" }
   | { type: "rateChanged"; rate: number }
-  | { type: "voiceChanged"; voice: string }
-  | { type: "modelChanged"; model: OpenAITTSModel };
+  | { type: "providerChanged"; provider: ProviderId }
+  | { type: "voiceChanged"; provider: ProviderId; voice: string }
+  | { type: "modelChanged"; provider: ProviderId; model: string };
 
 export type StudioMessageHandler = (msg: IncomingMessage) => void;
 
@@ -30,13 +32,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
   }
 
   postPlay(audioBase64: string, format: string, playbackRate: number, label?: string): void {
-    this.view?.webview.postMessage({
-      type: "play",
-      audioBase64,
-      format,
-      playbackRate,
-      label,
-    });
+    this.view?.webview.postMessage({ type: "play", audioBase64, format, playbackRate, label });
   }
 
   postStop(): void {
@@ -45,6 +41,10 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
 
   postStatus(status: string, tone: "info" | "error" | "muted" = "info"): void {
     this.view?.webview.postMessage({ type: "status", status, tone });
+  }
+
+  postConfig(cfg: AppConfig): void {
+    this.view?.webview.postMessage({ type: "config", config: serializeConfig(cfg) });
   }
 
   reveal(): void {
@@ -88,7 +88,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
 
   private getHtml(webview: vscode.Webview): string {
     const nonce = makeNonce();
-    const cfg = getOpenAIConfig();
+    const cfg = getConfig();
     const csp = [
       "default-src 'none'",
       `style-src ${webview.cspSource} 'unsafe-inline'`,
@@ -97,17 +97,8 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       `media-src ${webview.cspSource} data: blob:`,
     ].join("; ");
 
-    const voiceOptions = VOICES.map(
-      (v) =>
-        `<option value="${v.id}"${v.id === cfg.voice ? " selected" : ""}>${escapeHtml(v.name)}${v.recommended ? " ★" : ""} — ${escapeHtml(v.category)}</option>`,
-    ).join("\n");
-
-    const modelOptions = (Object.keys(MODEL_LABELS) as OpenAITTSModel[])
-      .map(
-        (m) =>
-          `<option value="${m}"${m === cfg.model ? " selected" : ""}>${escapeHtml(MODEL_LABELS[m])}</option>`,
-      )
-      .join("\n");
+    const initialConfigJson = JSON.stringify(serializeConfig(cfg));
+    const catalogsJson = JSON.stringify(serializeCatalogs());
 
     return /* html */ `<!DOCTYPE html>
 <html lang="en">
@@ -143,17 +134,8 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       font-size: 0.78em;
       font-weight: 500;
     }
-    .row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin: 6px 0;
-    }
-    label {
-      flex: 0 0 64px;
-      color: var(--vscode-descriptionForeground);
-      font-size: 0.9em;
-    }
+    .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+    label { flex: 0 0 64px; color: var(--vscode-descriptionForeground); font-size: 0.9em; }
     select, input[type="range"], textarea, button {
       font-family: inherit;
       font-size: inherit;
@@ -166,10 +148,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       border: 1px solid var(--vscode-dropdown-border);
       border-radius: 2px;
     }
-    input[type="range"] {
-      flex: 1;
-      accent-color: var(--vscode-button-background);
-    }
+    input[type="range"] { flex: 1; accent-color: var(--vscode-button-background); }
     .rate-value {
       flex: 0 0 42px;
       text-align: right;
@@ -188,11 +167,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       border-radius: 2px;
       margin: 6px 0;
     }
-    .button-row {
-      display: flex;
-      gap: 6px;
-      margin-top: 8px;
-    }
+    .button-row { display: flex; gap: 6px; margin-top: 8px; }
     button {
       flex: 1;
       padding: 5px 10px;
@@ -241,20 +216,24 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
   </style>
 </head>
 <body>
-  <h1>AI Voice Studio <span class="badge">M1 · OpenAI</span></h1>
+  <h1>AI Voice Studio <span class="badge" id="providerBadge">M2</span></h1>
 
   <div class="row">
+    <label for="provider">Provider</label>
+    <select id="provider"></select>
+  </div>
+  <div class="row">
     <label for="model">Model</label>
-    <select id="model">${modelOptions}</select>
+    <select id="model"></select>
   </div>
   <div class="row">
     <label for="voice">Voice</label>
-    <select id="voice">${voiceOptions}</select>
+    <select id="voice"></select>
   </div>
   <div class="row">
     <label for="rate">Speed</label>
-    <input id="rate" type="range" min="0.5" max="4" step="0.05" value="${cfg.playbackRate}" />
-    <span class="rate-value" id="rateValue">${cfg.playbackRate.toFixed(2)}×</span>
+    <input id="rate" type="range" min="0.5" max="4" step="0.05" />
+    <span class="rate-value" id="rateValue"></span>
   </div>
 
   <textarea id="text" placeholder="Type or paste text to read. Or use Cmd+Alt+R / Ctrl+Alt+R on a selection in the editor."></textarea>
@@ -265,24 +244,29 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
   </div>
 
   <div class="status" id="status" data-tone="muted">Idle.</div>
-  <div class="hint">Set the API key with <code>AI Voice Studio: Set OpenAI API Key</code>. Other settings live in <code>settings.json</code>.</div>
+  <div class="hint">Set keys via <code>AI Voice Studio: Set API Key</code>. Provider-specific knobs (instructions, region, baseUrl…) live in <code>settings.json</code>.</div>
 
   <audio id="player"></audio>
 
   <script nonce="${nonce}">
     (function () {
       const vscode = acquireVsCodeApi();
+      const CATALOGS = ${catalogsJson};
+
+      let state = ${initialConfigJson};
 
       const els = {
-        model:     document.getElementById("model"),
-        voice:     document.getElementById("voice"),
-        rate:      document.getElementById("rate"),
-        rateValue: document.getElementById("rateValue"),
-        text:      document.getElementById("text"),
-        read:      document.getElementById("read"),
-        stop:      document.getElementById("stop"),
-        status:    document.getElementById("status"),
-        player:    document.getElementById("player"),
+        provider:     document.getElementById("provider"),
+        providerBadge:document.getElementById("providerBadge"),
+        model:        document.getElementById("model"),
+        voice:        document.getElementById("voice"),
+        rate:         document.getElementById("rate"),
+        rateValue:    document.getElementById("rateValue"),
+        text:         document.getElementById("text"),
+        read:         document.getElementById("read"),
+        stop:         document.getElementById("stop"),
+        status:       document.getElementById("status"),
+        player:       document.getElementById("player"),
       };
 
       function setStatus(msg, tone) {
@@ -290,23 +274,102 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         els.status.dataset.tone = tone || "info";
       }
 
-      function setBusy(busy) {
-        els.read.disabled = busy;
+      function setBusy(busy) { els.read.disabled = busy; }
+
+      function renderProviderOptions() {
+        els.provider.innerHTML = "";
+        for (const p of CATALOGS) {
+          const opt = document.createElement("option");
+          opt.value = p.id;
+          opt.textContent = p.label;
+          if (p.id === state.provider) opt.selected = true;
+          els.provider.appendChild(opt);
+        }
       }
 
-      els.rate.addEventListener("input", () => {
-        const rate = parseFloat(els.rate.value);
+      function activeCatalog() {
+        return CATALOGS.find((p) => p.id === state.provider) || CATALOGS[0];
+      }
+
+      function activeProviderState() {
+        return state[state.provider] || {};
+      }
+
+      function renderModelOptions() {
+        const catalog = activeCatalog();
+        els.model.innerHTML = "";
+        for (const m of catalog.models) {
+          const opt = document.createElement("option");
+          opt.value = m.id;
+          opt.textContent = m.label;
+          if (m.id === activeProviderState().model) opt.selected = true;
+          els.model.appendChild(opt);
+        }
+      }
+
+      function renderVoiceOptions() {
+        const catalog = activeCatalog();
+        const model = activeProviderState().model;
+        els.voice.innerHTML = "";
+        const voices = catalog.voices.filter((v) => !v.models || v.models.length === 0 || v.models.indexOf(model) !== -1);
+        for (const v of voices) {
+          const opt = document.createElement("option");
+          opt.value = v.id;
+          const star = v.recommended ? " ★" : "";
+          opt.textContent = v.name + star + " — " + v.category;
+          if (v.id === activeProviderState().voice) opt.selected = true;
+          els.voice.appendChild(opt);
+        }
+      }
+
+      function renderRate() {
+        const rate = state.playbackRate || 1;
+        els.rate.value = String(rate);
         els.rateValue.textContent = rate.toFixed(2) + "×";
         els.player.playbackRate = rate;
-        vscode.postMessage({ type: "rateChanged", rate: rate });
-      });
+      }
 
-      els.voice.addEventListener("change", () => {
-        vscode.postMessage({ type: "voiceChanged", voice: els.voice.value });
+      function renderBadge() {
+        const label = (CATALOGS.find((p) => p.id === state.provider) || {}).label || state.provider;
+        els.providerBadge.textContent = "M2 · " + label;
+      }
+
+      function renderAll() {
+        renderProviderOptions();
+        renderModelOptions();
+        renderVoiceOptions();
+        renderRate();
+        renderBadge();
+      }
+
+      els.provider.addEventListener("change", () => {
+        const next = els.provider.value;
+        state.provider = next;
+        renderModelOptions();
+        renderVoiceOptions();
+        renderBadge();
+        vscode.postMessage({ type: "providerChanged", provider: next });
       });
 
       els.model.addEventListener("change", () => {
-        vscode.postMessage({ type: "modelChanged", model: els.model.value });
+        const ps = activeProviderState();
+        ps.model = els.model.value;
+        renderVoiceOptions();
+        vscode.postMessage({ type: "modelChanged", provider: state.provider, model: els.model.value });
+      });
+
+      els.voice.addEventListener("change", () => {
+        const ps = activeProviderState();
+        ps.voice = els.voice.value;
+        vscode.postMessage({ type: "voiceChanged", provider: state.provider, voice: els.voice.value });
+      });
+
+      els.rate.addEventListener("input", () => {
+        const rate = parseFloat(els.rate.value);
+        state.playbackRate = rate;
+        els.rateValue.textContent = rate.toFixed(2) + "×";
+        els.player.playbackRate = rate;
+        vscode.postMessage({ type: "rateChanged", rate: rate });
       });
 
       els.read.addEventListener("click", () => {
@@ -328,14 +391,8 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         vscode.postMessage({ type: "requestStop" });
       });
 
-      els.player.addEventListener("ended", () => {
-        setBusy(false);
-        setStatus("Done.");
-      });
-      els.player.addEventListener("error", () => {
-        setBusy(false);
-        setStatus("Audio decode failed.", "error");
-      });
+      els.player.addEventListener("ended", () => { setBusy(false); setStatus("Done."); });
+      els.player.addEventListener("error", () => { setBusy(false); setStatus("Audio decode failed.", "error"); });
 
       window.addEventListener("message", (event) => {
         const msg = event.data;
@@ -363,14 +420,16 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
             setBusy((msg.status || "").toLowerCase().indexOf("synthesiz") === 0);
             setStatus(msg.status, msg.tone);
             break;
-          case "fillText":
-            els.text.value = msg.text || "";
+          case "config":
+            state = msg.config;
+            renderAll();
             break;
         }
       });
 
+      renderAll();
       vscode.postMessage({ type: "ready" });
-      vscode.postMessage({ type: "log", payload: "M1 webview ready" });
+      vscode.postMessage({ type: "log", payload: "M2 webview ready" });
     })();
   </script>
 </body>
@@ -378,17 +437,52 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
   }
 }
 
+interface SerializedConfig {
+  provider: ProviderId;
+  playbackRate: number;
+  openai: { model: string; voice: string };
+  minimax: { model: string; voice: string };
+  mimo: { model: string; voice: string };
+}
+
+interface SerializedCatalog {
+  id: ProviderId;
+  label: string;
+  models: { id: string; label: string }[];
+  voices: { id: string; name: string; category: string; recommended?: boolean; models: string[] }[];
+}
+
+function serializeConfig(cfg: AppConfig): SerializedConfig {
+  return {
+    provider: cfg.provider,
+    playbackRate: cfg.playbackRate,
+    openai: { model: cfg.openai.model, voice: cfg.openai.voice },
+    minimax: { model: cfg.minimax.model, voice: cfg.minimax.voice },
+    mimo: { model: cfg.mimo.model, voice: cfg.mimo.voice },
+  };
+}
+
+function serializeCatalogs(): SerializedCatalog[] {
+  return PROVIDER_IDS.map((id) => {
+    const c = CATALOGS[id];
+    return {
+      id,
+      label: PROVIDER_LABELS[id],
+      models: c.models.map((m) => ({ id: m.id, label: m.label })),
+      voices: c.voices.map((v) => ({
+        id: v.id,
+        name: v.name,
+        category: v.category,
+        recommended: v.recommended,
+        models: v.models,
+      })),
+    };
+  });
+}
+
 function makeNonce(): string {
   const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   let out = "";
   for (let i = 0; i < 32; i++) out += chars.charAt(Math.floor(Math.random() * chars.length));
   return out;
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
 }

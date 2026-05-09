@@ -45,6 +45,14 @@ export const STYLE_TAG_PRESETS: StyleTagPreset[] = [
   { id: "唱歌", label: "唱歌" },
 ];
 
+export const AUDIO_EVENT_PRESETS: StyleTagPreset[] = [
+  { id: "笑声", label: "笑声" },
+  { id: "叹息", label: "叹息" },
+  { id: "哭声", label: "哭声" },
+  { id: "咳嗽", label: "咳嗽" },
+  { id: "惊讶", label: "惊讶" },
+];
+
 export const MIMO_CATALOG: ProviderCatalog = {
   id: "mimo",
   label: "MiMo",

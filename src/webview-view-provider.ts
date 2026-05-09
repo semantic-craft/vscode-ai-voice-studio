@@ -2,20 +2,24 @@ import * as vscode from "vscode";
 import { getConfig, setPlaybackRate, type AppConfig } from "./config";
 import { CATALOGS } from "./core/synthesize";
 import { PROVIDER_IDS, PROVIDER_LABELS, type ProviderId } from "./core/providers";
-import { STYLE_TAG_PRESETS } from "./core/mimo-voices";
+import { AUDIO_EVENT_PRESETS, STYLE_TAG_PRESETS } from "./core/mimo-voices";
 
 type IncomingMessage =
   | { type: "ready" }
   | { type: "log"; payload: unknown }
   | { type: "requestRead"; text: string }
   | { type: "requestStop" }
+  | { type: "requestSetKey" }
   | { type: "rateChanged"; rate: number }
   | { type: "providerChanged"; provider: ProviderId }
   | { type: "voiceChanged"; provider: ProviderId; voice: string }
   | { type: "modelChanged"; provider: ProviderId; model: string }
-  | { type: "mimoStyleTagsChanged"; tags: string[] };
+  | { type: "mimoStyleTagsChanged"; tags: string[] }
+  | { type: "mimoAudioEventTagsChanged"; tags: string[] };
 
 export type StudioMessageHandler = (msg: IncomingMessage) => void;
+
+export type StatusTone = "info" | "error" | "muted";
 
 export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = "aiVoiceStudio.studio";
@@ -66,8 +70,8 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
     this.view?.webview.postMessage({ type: "stop" });
   }
 
-  postStatus(status: string, tone: "info" | "error" | "muted" = "info"): void {
-    this.view?.webview.postMessage({ type: "status", status, tone });
+  postStatus(status: string, tone: StatusTone = "info", action?: { label: string; id: string }): void {
+    this.view?.webview.postMessage({ type: "status", status, tone, action });
   }
 
   postConfig(cfg: AppConfig): void {
@@ -127,6 +131,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
     const initialConfigJson = JSON.stringify(serializeConfig(cfg));
     const catalogsJson = JSON.stringify(serializeCatalogs());
     const styleTagsJson = JSON.stringify(STYLE_TAG_PRESETS);
+    const audioEventsJson = JSON.stringify(AUDIO_EVENT_PRESETS);
 
     return /* html */ `<!DOCTYPE html>
 <html lang="en">
@@ -233,6 +238,33 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       color: var(--vscode-button-foreground);
       border-color: var(--vscode-button-background);
     }
+    .progress {
+      margin-top: 8px;
+      display: none;
+      align-items: center;
+      gap: 8px;
+    }
+    .progress[data-show="true"] { display: flex; }
+    .progress-bar {
+      flex: 1;
+      height: 4px;
+      background: var(--vscode-progressBar-background, var(--vscode-dropdown-border));
+      border-radius: 2px;
+      overflow: hidden;
+      opacity: 0.5;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      width: 0%;
+      background: var(--vscode-button-background);
+      transition: width 180ms ease;
+    }
+    .progress-text {
+      font-size: 0.78em;
+      color: var(--vscode-descriptionForeground);
+      font-variant-numeric: tabular-nums;
+      flex: 0 0 auto;
+    }
     .status {
       margin-top: 10px;
       padding: 6px 8px;
@@ -248,6 +280,14 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
     .status[data-tone="error"] {
       color: var(--vscode-errorForeground);
       border-left-color: var(--vscode-errorForeground);
+    }
+    .status-action {
+      margin-top: 6px;
+    }
+    .status-action button {
+      padding: 3px 10px;
+      font-size: 0.85em;
+      flex: 0 0 auto;
     }
     .hint {
       margin-top: 8px;
@@ -266,7 +306,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
   </style>
 </head>
 <body>
-  <h1>AI Voice Studio <span class="badge" id="providerBadge">M3</span></h1>
+  <h1>AI Voice Studio <span class="badge" id="providerBadge">OpenAI</span></h1>
 
   <div class="row">
     <label for="provider">Provider</label>
@@ -284,6 +324,10 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
     <label>Style</label>
     <div class="chips" id="styleChips"></div>
   </div>
+  <div class="row" id="eventRow">
+    <label>Sound</label>
+    <div class="chips" id="eventChips"></div>
+  </div>
   <div class="row">
     <label for="rate">Speed</label>
     <input id="rate" type="range" min="0.5" max="4" step="0.05" />
@@ -297,7 +341,15 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
     <button id="stop" class="secondary">⏹ Stop</button>
   </div>
 
+  <div class="progress" id="progress" data-show="false">
+    <div class="progress-bar"><div class="progress-bar-fill" id="progressFill"></div></div>
+    <span class="progress-text" id="progressText">0 / 0</span>
+  </div>
+
   <div class="status" id="status" data-tone="muted">Idle.</div>
+  <div class="status-action hidden" id="statusAction">
+    <button id="statusActionBtn" class="secondary"></button>
+  </div>
   <div class="hint">Long text auto-chunks (synthesizes ahead while playing). Set keys via <code>AI Voice Studio: Set API Key</code>.</div>
 
   <audio id="player"></audio>
@@ -307,52 +359,83 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       const vscode = acquireVsCodeApi();
       const CATALOGS = ${catalogsJson};
       const STYLE_TAGS = ${styleTagsJson};
+      const EVENT_TAGS = ${audioEventsJson};
 
       let state = ${initialConfigJson};
       let mode = "idle"; // idle | playing | paused
       let activeSession = null; // { id, total }
       let sessionDone = false;
+      let chunksPlayed = 0;
+      let pendingAction = null; // { id, label } or null
       const queue = []; // { sessionId, chunkIndex, totalChunks, audioBase64, format, label }
 
       const els = {
-        provider:     document.getElementById("provider"),
-        providerBadge:document.getElementById("providerBadge"),
-        model:        document.getElementById("model"),
-        voice:        document.getElementById("voice"),
-        styleRow:     document.getElementById("styleRow"),
-        styleChips:   document.getElementById("styleChips"),
-        rate:         document.getElementById("rate"),
-        rateValue:    document.getElementById("rateValue"),
-        text:         document.getElementById("text"),
-        primary:      document.getElementById("primary"),
-        stop:         document.getElementById("stop"),
-        status:       document.getElementById("status"),
-        player:       document.getElementById("player"),
+        provider:        document.getElementById("provider"),
+        providerBadge:   document.getElementById("providerBadge"),
+        model:           document.getElementById("model"),
+        voice:           document.getElementById("voice"),
+        styleRow:        document.getElementById("styleRow"),
+        styleChips:      document.getElementById("styleChips"),
+        eventRow:        document.getElementById("eventRow"),
+        eventChips:      document.getElementById("eventChips"),
+        rate:            document.getElementById("rate"),
+        rateValue:       document.getElementById("rateValue"),
+        text:            document.getElementById("text"),
+        primary:         document.getElementById("primary"),
+        stop:            document.getElementById("stop"),
+        progress:        document.getElementById("progress"),
+        progressFill:    document.getElementById("progressFill"),
+        progressText:    document.getElementById("progressText"),
+        status:          document.getElementById("status"),
+        statusAction:    document.getElementById("statusAction"),
+        statusActionBtn: document.getElementById("statusActionBtn"),
+        player:          document.getElementById("player"),
       };
 
-      function setStatus(msg, tone) {
+      function setStatus(msg, tone, action) {
         els.status.textContent = msg;
         els.status.dataset.tone = tone || "info";
+        if (action && action.label && action.id) {
+          pendingAction = action;
+          els.statusActionBtn.textContent = action.label;
+          els.statusAction.classList.remove("hidden");
+        } else {
+          pendingAction = null;
+          els.statusAction.classList.add("hidden");
+        }
       }
 
       function setMode(next) {
         mode = next;
         if (mode === "playing") {
           els.primary.textContent = "⏸ Pause";
-          els.primary.disabled = false;
         } else if (mode === "paused") {
           els.primary.textContent = "▶ Resume";
-          els.primary.disabled = false;
         } else {
           els.primary.textContent = "▶ Read";
-          els.primary.disabled = false;
         }
+        els.primary.disabled = false;
+      }
+
+      function setProgress(played, total) {
+        if (!total || total <= 0) {
+          els.progress.dataset.show = "false";
+          els.progressFill.style.width = "0%";
+          els.progressText.textContent = "0 / 0";
+          return;
+        }
+        const pct = Math.max(0, Math.min(1, played / total));
+        els.progress.dataset.show = "true";
+        els.progressFill.style.width = (pct * 100).toFixed(1) + "%";
+        els.progressText.textContent = played + " / " + total;
       }
 
       function resetSession() {
         queue.length = 0;
         activeSession = null;
         sessionDone = false;
+        chunksPlayed = 0;
+        setProgress(0, 0);
         els.player.pause();
         els.player.removeAttribute("src");
         els.player.load();
@@ -394,33 +477,65 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         const model = activeProviderState().model;
         els.voice.innerHTML = "";
         const voices = catalog.voices.filter((v) => !v.models || v.models.length === 0 || v.models.indexOf(model) !== -1);
+        const groups = new Map();
         for (const v of voices) {
-          const opt = document.createElement("option");
-          opt.value = v.id;
-          const star = v.recommended ? " ★" : "";
-          opt.textContent = v.name + star + " — " + v.category;
-          if (v.id === activeProviderState().voice) opt.selected = true;
-          els.voice.appendChild(opt);
+          const cat = v.category || "Voices";
+          if (!groups.has(cat)) groups.set(cat, []);
+          groups.get(cat).push(v);
+        }
+        for (const [groupName, members] of groups) {
+          const useGroup = groups.size > 1;
+          const container = useGroup ? document.createElement("optgroup") : els.voice;
+          if (useGroup) container.label = groupName;
+          for (const v of members) {
+            const opt = document.createElement("option");
+            opt.value = v.id;
+            const star = v.recommended ? " ★" : "";
+            opt.textContent = useGroup ? v.name + star : v.name + star + " — " + groupName;
+            if (v.id === activeProviderState().voice) opt.selected = true;
+            container.appendChild(opt);
+          }
+          if (useGroup) els.voice.appendChild(container);
         }
       }
 
-      function renderStyleChips() {
+      function renderChipRow(rowEl, container, presets, activeIds, onToggle) {
         if (state.provider !== "mimo") {
-          els.styleRow.classList.add("hidden");
+          rowEl.classList.add("hidden");
           return;
         }
-        els.styleRow.classList.remove("hidden");
-        const active = new Set((state.mimo && state.mimo.openingStyleTags) || []);
-        els.styleChips.innerHTML = "";
-        for (const tag of STYLE_TAGS) {
+        rowEl.classList.remove("hidden");
+        const active = new Set(activeIds || []);
+        container.innerHTML = "";
+        for (const tag of presets) {
           const chip = document.createElement("button");
           chip.className = "chip";
           chip.textContent = tag.label;
           chip.dataset.active = active.has(tag.id) ? "true" : "false";
           chip.dataset.tag = tag.id;
-          chip.addEventListener("click", () => toggleStyleTag(tag.id));
-          els.styleChips.appendChild(chip);
+          chip.addEventListener("click", () => onToggle(tag.id));
+          container.appendChild(chip);
         }
+      }
+
+      function renderStyleChips() {
+        renderChipRow(
+          els.styleRow,
+          els.styleChips,
+          STYLE_TAGS,
+          (state.mimo && state.mimo.openingStyleTags) || [],
+          toggleStyleTag,
+        );
+      }
+
+      function renderEventChips() {
+        renderChipRow(
+          els.eventRow,
+          els.eventChips,
+          EVENT_TAGS,
+          (state.mimo && state.mimo.audioEventTags) || [],
+          toggleEventTag,
+        );
       }
 
       function toggleStyleTag(id) {
@@ -433,6 +548,16 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         vscode.postMessage({ type: "mimoStyleTagsChanged", tags: next });
       }
 
+      function toggleEventTag(id) {
+        const current = new Set((state.mimo && state.mimo.audioEventTags) || []);
+        if (current.has(id)) current.delete(id); else current.add(id);
+        const next = Array.from(current);
+        if (!state.mimo) state.mimo = {};
+        state.mimo.audioEventTags = next;
+        renderEventChips();
+        vscode.postMessage({ type: "mimoAudioEventTagsChanged", tags: next });
+      }
+
       function renderRate() {
         const rate = state.playbackRate || 1;
         els.rate.value = String(rate);
@@ -442,7 +567,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
 
       function renderBadge() {
         const label = (CATALOGS.find((p) => p.id === state.provider) || {}).label || state.provider;
-        els.providerBadge.textContent = "M3 · " + label;
+        els.providerBadge.textContent = label;
       }
 
       function renderAll() {
@@ -450,6 +575,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         renderModelOptions();
         renderVoiceOptions();
         renderStyleChips();
+        renderEventChips();
         renderRate();
         renderBadge();
       }
@@ -482,6 +608,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         renderModelOptions();
         renderVoiceOptions();
         renderStyleChips();
+        renderEventChips();
         renderBadge();
         vscode.postMessage({ type: "providerChanged", provider: next });
       });
@@ -541,7 +668,14 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         vscode.postMessage({ type: "requestStop" });
       });
 
+      els.statusActionBtn.addEventListener("click", () => {
+        if (!pendingAction) return;
+        vscode.postMessage({ type: pendingAction.id });
+      });
+
       els.player.addEventListener("ended", () => {
+        chunksPlayed += 1;
+        if (activeSession) setProgress(chunksPlayed, activeSession.total);
         startNextChunk();
       });
       els.player.addEventListener("error", () => {
@@ -557,6 +691,8 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
             resetSession();
             activeSession = { id: msg.sessionId, total: msg.totalChunks };
             sessionDone = false;
+            chunksPlayed = 0;
+            setProgress(0, msg.totalChunks);
             setMode("playing");
             break;
           case "play":
@@ -585,7 +721,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
             setStatus("Stopped.");
             break;
           case "status":
-            setStatus(msg.status, msg.tone);
+            setStatus(msg.status, msg.tone, msg.action);
             break;
           case "config":
             state = msg.config;
@@ -597,7 +733,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       renderAll();
       setMode("idle");
       vscode.postMessage({ type: "ready" });
-      vscode.postMessage({ type: "log", payload: "M3 webview ready" });
     })();
   </script>
 </body>
@@ -610,7 +745,7 @@ interface SerializedConfig {
   playbackRate: number;
   openai: { model: string; voice: string };
   minimax: { model: string; voice: string };
-  mimo: { model: string; voice: string; openingStyleTags: string[] };
+  mimo: { model: string; voice: string; openingStyleTags: string[]; audioEventTags: string[] };
 }
 
 interface SerializedCatalog {
@@ -630,6 +765,7 @@ function serializeConfig(cfg: AppConfig): SerializedConfig {
       model: cfg.mimo.model,
       voice: cfg.mimo.voice,
       openingStyleTags: cfg.mimo.openingStyleTags,
+      audioEventTags: cfg.mimo.audioEventTags,
     },
   };
 }

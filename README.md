@@ -11,6 +11,18 @@ a sidebar panel and a single keyboard shortcut.
 
 _Screenshots: TODO — sidebar, status bar progress, MiMo style chips._
 
+## Supported models
+
+| Provider | Models | Voices |
+|---|---|---|
+| **OpenAI** | `gpt-4o-mini-tts` (default), `tts-1`, `tts-1-hd` | `cedar`, `alloy`, `verse`, `marin`, plus the legacy `tts-1` set |
+| **MiniMax** | `speech-2.8-hd` (default), `speech-2.8-turbo`, `speech-2.6-hd`, `speech-2.6-turbo`, `speech-02-hd`, `speech-02-turbo`, `speech-01-hd`, `speech-01-turbo` | 15 curated IDs (Chinese radio host, English calm woman, anime archetypes, multilingual presets); 40+ language boosts |
+| **MiMo Token Plan** | `mimo-v2.5-tts` (preset voices, default), `mimo-v2.5-tts-voicedesign` (describe-the-voice), `mimo-v2.5-tts-voiceclone` (upload mp3/wav ≤10 MB), `mimo-v2-tts` (legacy V2) | Bingtang / Chloe / etc. + your own cloned/designed voice |
+| **Google Gemini** | `gemini-3.1-flash-tts-preview` (default), `gemini-2.5-flash-preview-tts`, `gemini-2.5-pro-preview-tts` | 30 prebuilt voices (Zephyr / Puck / Charon / Kore / Aoede / Leda / Orus / …) |
+
+Switch providers from the chip strip at the top of the sidebar. Each
+provider keeps its own voice / model selection and API key.
+
 ## Features
 
 - **Four providers, one switcher.**
@@ -64,7 +76,7 @@ _Screenshots: TODO — sidebar, status bar progress, MiMo style chips._
 
 1. Install the `.vsix` (or from the Marketplace once published):
    ```
-   code --install-extension ai-voice-studio-0.5.0.vsix
+   code --install-extension ai-voice-studio-0.5.1.vsix
    ```
 2. Open the **AI Voice Studio** entry in the Activity Bar.
 3. Click the **Set key…** link in the sidebar header (or run

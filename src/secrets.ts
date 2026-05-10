@@ -5,18 +5,21 @@ const SECRET_KEYS: Record<ProviderId, string> = {
   openai: "aiVoiceStudio.openai.apiKey",
   minimax: "aiVoiceStudio.minimax.apiKey",
   mimo: "aiVoiceStudio.mimo.apiKey",
+  gemini: "aiVoiceStudio.gemini.apiKey",
 };
 
 const PROMPT_TITLES: Record<ProviderId, string> = {
   openai: "OpenAI API key",
   minimax: "MiniMax API key",
   mimo: "MiMo Token Plan API key (tp-…)",
+  gemini: "Google AI Studio API key",
 };
 
 const PLACEHOLDERS: Record<ProviderId, string> = {
   openai: "sk-...",
   minimax: "eyJhbGciOi...",
   mimo: "tp-...",
+  gemini: "AIzaSy...",
 };
 
 export class SecretsStore {

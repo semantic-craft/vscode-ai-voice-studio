@@ -4,6 +4,64 @@ All notable changes to **AI Voice Studio** are documented here. The format is
 loosely [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.0] — 2026-05-11
+
+### Added
+- **Google Gemini provider.** Three preview models
+  (`gemini-3.1-flash-tts-preview`, `gemini-2.5-flash-preview-tts`,
+  `gemini-2.5-pro-preview-tts`), 30 prebuilt voices, inline
+  `[whispers]/[laughs]/…` audio-tag chips, and an optional style preamble
+  prefix. Raw 24 kHz PCM is wrapped to WAV in-process for webview playback.
+- **MiMo v2.5 voice design + voice clone.** New
+  `mimo-v2.5-tts-voicedesign` (describe the voice in natural language —
+  no preset needed) and `mimo-v2.5-tts-voiceclone` (upload an mp3/wav
+  ≤10 MB; cloned per request). Sample lives in `globalState`, never in
+  settings.
+- **Director Mode + Voice Design templates** for MiMo: one-click insert
+  rich style prompts that read like a stage direction.
+- **MiMo style + sound-event tag library.** Doc-aligned chip palettes
+  with categories (`开心`, `严肃`, `兴奋`, `粤语`, `夹子音`, `笑`,
+  `深呼吸`, `哽咽`, …) plus inline custom-tag input. The `唱歌` tag
+  still overrides everything else.
+- **MiMo style preset library.** Save the current
+  (`stylePrompt`, opening tags, event tags) bundle by name; apply or
+  delete from the sidebar. Stored under
+  `aiVoiceStudio.mimo.stylePresets`.
+- **MiniMax 2.8 / 2.6 / 02 / 01 turbo variants** —
+  `speech-2.8-turbo`, `speech-2.6-turbo`, `speech-02-turbo`,
+  `speech-01-hd`, `speech-01-turbo` join the model list. Each is
+  labelled with its trade-off (fastest, low-latency, small-language, …).
+- **MiniMax voice character knobs.** Inline volume (0–10), pitch
+  (-12..+12 semitones), emotion (`auto / happy / sad / angry / fearful /
+  disgusted / surprised / neutral`), and channel (mono / stereo).
+- **MiniMax 语气词 chips** for the speech-2.8 family —
+  `(laughs) (chuckle) (sighs) (coughs) (clear-throat) (groans)
+  (breath) (pant) (gasps) (humming) (emm) (sneezes) …` — click to
+  insert at the cursor in the transcript.
+- **MiniMax pause helper.** Quick `+0.3s / +0.5s / +1s / +2s / +3s`
+  buttons insert `<#x#>` markers at the cursor.
+- **MiniMax pronunciation overrides.** Multi-line editor for
+  `pronunciation_dict.tone` entries — `处理/(chu3)(li3)` for pinyin
+  or `危险/dangerous` for substitution.
+- **Top-tier UX pass.** Provider chip strip (instant click-to-switch)
+  replaces the dropdown; "Set key…" rescue link in the header; ▶ Test
+  button reads a short sample with the current voice; collapsible
+  "Voice character" card consolidates per-provider settings; semantic
+  status colours with a dot indicator; state-aware primary button;
+  keyboard shortcut footer with `<kbd>` styling.
+- **Surfaced settings inline.** OpenAI `instructions`, MiniMax `speed /
+  region / languageBoost`, Gemini `stylePreamble` are now editable
+  directly from the sidebar — no settings.json round-trip.
+
+### Changed
+- `aiVoiceStudio.provider` enum now includes `gemini`. The provider
+  catalog grew from three to four backends.
+- Voice-clone payload is stored in `ExtensionContext.globalState`
+  rather than synced settings — base64 mp3/wav samples are too big for
+  `settings.json`.
+- README + marketplace description updated to reflect the four-provider
+  offering and the new feature surface.
+
 ## [0.4.0] — 2026-05-10
 
 ### Added

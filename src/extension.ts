@@ -1,12 +1,27 @@
 import * as vscode from "vscode";
 import {
   getConfig,
+  getMiMoVoiceCloneSample,
+  setGeminiStylePreamble,
   setMiMoAudioEventTags,
   setMiMoOpeningStyleTags,
+  setMiMoStylePresets,
+  setMiMoStylePrompt,
+  setMiMoVoiceCloneSample,
+  setMiniMaxChannel,
+  setMiniMaxEmotion,
+  setMiniMaxLanguageBoost,
+  setMiniMaxPitch,
+  setMiniMaxPronunciationDict,
+  setMiniMaxRegion,
+  setMiniMaxSpeed,
+  setMiniMaxVol,
+  setOpenAIInstructions,
   setProvider,
   setProviderModel,
   setProviderVoice,
   type AppConfig,
+  type MiMoStylePreset,
 } from "./config";
 import {
   PROVIDER_IDS,
@@ -98,6 +113,11 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
+  const refreshConfig = (): void => {
+    if (!provider.isReady()) return;
+    provider.postConfig(getConfig(), getMiMoVoiceCloneSample(context.globalState));
+  };
+
   provider.setMessageHandler((msg) => {
     switch (msg.type) {
       case "requestRead":
@@ -111,19 +131,82 @@ export function activate(context: vscode.ExtensionContext): void {
         void vscode.commands.executeCommand("aiVoiceStudio.setApiKey");
         return;
       case "providerChanged":
-        void setProvider(msg.provider).then(() => provider.postConfig(getConfig()));
+        void setProvider(msg.provider).then(refreshConfig);
         return;
       case "voiceChanged":
         void setProviderVoice(msg.provider, msg.voice);
         return;
       case "modelChanged":
-        void setProviderModel(msg.provider, msg.model).then(() => provider.postConfig(getConfig()));
+        void setProviderModel(msg.provider, msg.model).then(refreshConfig);
         return;
       case "mimoStyleTagsChanged":
         void setMiMoOpeningStyleTags(msg.tags);
         return;
       case "mimoAudioEventTagsChanged":
         void setMiMoAudioEventTags(msg.tags);
+        return;
+      case "mimoStylePromptChanged":
+        void setMiMoStylePrompt(msg.text);
+        return;
+      case "mimoVoiceCloneSampleSet":
+        void setMiMoVoiceCloneSample(context.globalState, {
+          dataUrl: msg.dataUrl,
+          mime: msg.mime,
+          fileName: msg.fileName,
+          sizeBytes: msg.sizeBytes,
+          storedAt: Date.now(),
+        }).then(refreshConfig);
+        return;
+      case "mimoVoiceCloneSampleClear":
+        void setMiMoVoiceCloneSample(context.globalState, undefined).then(refreshConfig);
+        return;
+      case "mimoPresetSave":
+        void applyPresetSave(msg.preset).then(refreshConfig);
+        return;
+      case "mimoPresetApply":
+        void applyPresetByName(msg.name).then(refreshConfig);
+        return;
+      case "mimoPresetDelete":
+        void applyPresetDelete(msg.name).then(refreshConfig);
+        return;
+      case "geminiStylePreambleChanged":
+        void setGeminiStylePreamble(msg.text);
+        return;
+      case "geminiInsertAudioTag":
+        // Pure UI signal — handled inside the webview, no extension state change.
+        return;
+      case "openaiInstructionsChanged":
+        void setOpenAIInstructions(msg.text);
+        return;
+      case "minimaxSpeedChanged":
+        void setMiniMaxSpeed(msg.speed);
+        return;
+      case "minimaxRegionChanged":
+        void setMiniMaxRegion(msg.region);
+        return;
+      case "minimaxLanguageBoostChanged":
+        void setMiniMaxLanguageBoost(msg.text);
+        return;
+      case "minimaxVolChanged":
+        void setMiniMaxVol(msg.vol);
+        return;
+      case "minimaxPitchChanged":
+        void setMiniMaxPitch(msg.pitch);
+        return;
+      case "minimaxEmotionChanged":
+        void setMiniMaxEmotion(msg.emotion);
+        return;
+      case "minimaxChannelChanged":
+        void setMiniMaxChannel(msg.channel);
+        return;
+      case "minimaxPronunciationDictChanged":
+        void setMiniMaxPronunciationDict(msg.entries);
+        return;
+      case "minimaxInsertSpeechTag":
+        // Pure UI signal — handled inside the webview, no extension state change.
+        return;
+      case "minimaxInsertPause":
+        // Pure UI signal — handled inside the webview, no extension state change.
         return;
     }
   });
@@ -147,7 +230,7 @@ export function activate(context: vscode.ExtensionContext): void {
       return;
     }
 
-    const args = buildProviderArgs(cfg, apiKey);
+    const args = buildProviderArgs(cfg, apiKey, context);
     if (!args) {
       provider.postStatus(`Invalid voice/model for ${PROVIDER_LABELS[cfg.provider]}.`, "error");
       statusBar.set({ kind: "error" });
@@ -237,8 +320,8 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.workspace.onDidChangeConfiguration((event) => {
-      if (event.affectsConfiguration("aiVoiceStudio") && provider.isReady()) {
-        provider.postConfig(getConfig());
+      if (event.affectsConfiguration("aiVoiceStudio")) {
+        refreshConfig();
       }
     }),
   );
@@ -268,7 +351,11 @@ async function resolveTextToRead(): Promise<string | undefined> {
   return undefined;
 }
 
-function buildProviderArgs(cfg: AppConfig, apiKey: string): ProviderArgs | undefined {
+function buildProviderArgs(
+  cfg: AppConfig,
+  apiKey: string,
+  context: vscode.ExtensionContext,
+): ProviderArgs | undefined {
   const catalog = CATALOGS[cfg.provider];
   switch (cfg.provider) {
     case "openai": {
@@ -295,14 +382,23 @@ function buildProviderArgs(cfg: AppConfig, apiKey: string): ProviderArgs | undef
         voice: cfg.minimax.voice,
         format: cfg.minimax.format,
         speed: cfg.minimax.speed,
+        vol: cfg.minimax.vol,
+        pitch: cfg.minimax.pitch,
+        emotion: cfg.minimax.emotion,
+        channel: cfg.minimax.channel,
         sampleRate: cfg.minimax.sampleRate,
         bitrate: cfg.minimax.bitrate,
         languageBoost: cfg.minimax.languageBoost || undefined,
+        pronunciationDict: cfg.minimax.pronunciationDict.length ? cfg.minimax.pronunciationDict : undefined,
       };
     }
     case "mimo": {
       const voice = getVoiceById(catalog, cfg.mimo.voice);
       if (!voice || !isVoiceAvailableForModel(voice, cfg.mimo.model)) return undefined;
+      const cloneRecord = getMiMoVoiceCloneSample(context.globalState);
+      const voiceCloneSample = cloneRecord
+        ? { dataUrl: cloneRecord.dataUrl, sizeBytes: cloneRecord.sizeBytes }
+        : undefined;
       return {
         provider: "mimo",
         apiKey,
@@ -313,6 +409,20 @@ function buildProviderArgs(cfg: AppConfig, apiKey: string): ProviderArgs | undef
         stylePrompt: cfg.mimo.stylePrompt || undefined,
         openingStyleTags: cfg.mimo.openingStyleTags.length ? cfg.mimo.openingStyleTags : undefined,
         audioEventTags: cfg.mimo.audioEventTags.length ? cfg.mimo.audioEventTags : undefined,
+        voiceCloneSample,
+      };
+    }
+    case "gemini": {
+      const voice = getVoiceById(catalog, cfg.gemini.voice);
+      if (!voice || !isVoiceAvailableForModel(voice, cfg.gemini.model)) return undefined;
+      return {
+        provider: "gemini",
+        apiKey,
+        baseUrl: cfg.gemini.baseUrl,
+        model: cfg.gemini.model,
+        voice: cfg.gemini.voice,
+        format: "wav",
+        stylePreamble: cfg.gemini.stylePreamble || undefined,
       };
     }
   }
@@ -321,9 +431,49 @@ function buildProviderArgs(cfg: AppConfig, apiKey: string): ProviderArgs | undef
 function describeVoice(cfg: AppConfig): string {
   const catalog = CATALOGS[cfg.provider];
   const voiceId =
-    cfg.provider === "openai" ? cfg.openai.voice : cfg.provider === "minimax" ? cfg.minimax.voice : cfg.mimo.voice;
+    cfg.provider === "openai"
+      ? cfg.openai.voice
+      : cfg.provider === "minimax"
+        ? cfg.minimax.voice
+        : cfg.provider === "mimo"
+          ? cfg.mimo.voice
+          : cfg.gemini.voice;
   const voice = getVoiceById(catalog, voiceId);
   return voice?.name ?? voiceId;
+}
+
+async function applyPresetSave(preset: MiMoStylePreset): Promise<void> {
+  const cfg = getConfig();
+  const filtered = cfg.mimo.stylePresets.filter((p) => p.name !== preset.name);
+  filtered.push({
+    name: preset.name,
+    stylePrompt: preset.stylePrompt ?? "",
+    openingStyleTags: Array.isArray(preset.openingStyleTags) ? preset.openingStyleTags : [],
+    audioEventTags: Array.isArray(preset.audioEventTags) ? preset.audioEventTags : [],
+  });
+  await setMiMoStylePresets(filtered);
+}
+
+async function applyPresetApply(preset: MiMoStylePreset): Promise<void> {
+  await Promise.all([
+    setMiMoStylePrompt(preset.stylePrompt ?? ""),
+    setMiMoOpeningStyleTags(preset.openingStyleTags ?? []),
+    setMiMoAudioEventTags(preset.audioEventTags ?? []),
+  ]);
+}
+
+async function applyPresetByName(name: string): Promise<void> {
+  const cfg = getConfig();
+  const found = cfg.mimo.stylePresets.find((p) => p.name === name);
+  if (!found) return;
+  await applyPresetApply(found);
+}
+
+async function applyPresetDelete(name: string): Promise<void> {
+  const cfg = getConfig();
+  const filtered = cfg.mimo.stylePresets.filter((p) => p.name !== name);
+  if (filtered.length === cfg.mimo.stylePresets.length) return;
+  await setMiMoStylePresets(filtered);
 }
 
 function handleError(err: unknown, provider: VoiceStudioViewProvider): void {

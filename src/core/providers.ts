@@ -1,11 +1,12 @@
-export type ProviderId = "openai" | "minimax" | "mimo";
+export type ProviderId = "openai" | "minimax" | "mimo" | "gemini";
 
-export const PROVIDER_IDS: ProviderId[] = ["openai", "minimax", "mimo"];
+export const PROVIDER_IDS: ProviderId[] = ["openai", "minimax", "mimo", "gemini"];
 
 export const PROVIDER_LABELS: Record<ProviderId, string> = {
   openai: "OpenAI",
   minimax: "MiniMax",
   mimo: "MiMo",
+  gemini: "Gemini",
 };
 
 export class TTSApiError extends Error {
@@ -56,7 +57,7 @@ export interface ProviderCatalog {
 }
 
 export function isProviderId(value: unknown): value is ProviderId {
-  return value === "openai" || value === "minimax" || value === "mimo";
+  return value === "openai" || value === "minimax" || value === "mimo" || value === "gemini";
 }
 
 export function getVoiceById(catalog: ProviderCatalog, id: string): VoiceConfig | undefined {

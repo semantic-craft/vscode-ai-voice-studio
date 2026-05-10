@@ -1,5 +1,11 @@
 import { TTSApiError, type SynthesizeContext, type SynthesizeResult } from "./providers";
-import type { MiniMaxFormat, MiniMaxModel, MiniMaxRegion } from "./minimax-voices";
+import {
+  modelSupportsEmotion,
+  type MiniMaxEmotion,
+  type MiniMaxFormat,
+  type MiniMaxModel,
+  type MiniMaxRegion,
+} from "./minimax-voices";
 
 const REQUEST_TIMEOUT_MS = 90_000;
 
@@ -10,9 +16,14 @@ export interface MiniMaxSynthesizeArgs extends SynthesizeContext {
   voice: string;
   format: MiniMaxFormat;
   speed: number;
+  vol: number;
+  pitch: number;
+  emotion: MiniMaxEmotion;
   sampleRate: number;
   bitrate: number;
+  channel: 1 | 2;
   languageBoost?: string;
+  pronunciationDict?: string[];
 }
 
 interface MiniMaxResponse {
@@ -30,26 +41,40 @@ export async function synthesizeMiniMax(args: MiniMaxSynthesizeArgs): Promise<Sy
     throw new TTSApiError("MiniMax API key is missing.", -1);
   }
 
-  const url = `${getBaseUrl(args.region)}/v1/t2a_v2`;
-  const body = {
+  const voiceSetting: Record<string, unknown> = {
+    voice_id: args.voice,
+    speed: args.speed,
+    vol: args.vol,
+    pitch: args.pitch,
+  };
+  if (args.emotion !== "auto" && modelSupportsEmotion(args.model)) {
+    voiceSetting.emotion = args.emotion;
+  }
+
+  const body: Record<string, unknown> = {
     model: args.model,
     text,
     stream: false,
     output_format: "hex",
-    language_boost: args.languageBoost,
-    voice_setting: {
-      voice_id: args.voice,
-      speed: args.speed,
-      vol: 1,
-      pitch: 0,
-    },
+    voice_setting: voiceSetting,
     audio_setting: {
       sample_rate: args.sampleRate,
       bitrate: args.bitrate,
       format: args.format,
-      channel: 1,
+      channel: args.channel,
     },
   };
+
+  if (args.languageBoost) {
+    body.language_boost = args.languageBoost;
+  }
+
+  const tones = (args.pronunciationDict ?? []).map((s) => s.trim()).filter(Boolean);
+  if (tones.length > 0) {
+    body.pronunciation_dict = { tone: tones };
+  }
+
+  const url = `${getBaseUrl(args.region)}/v1/t2a_v2`;
 
   const timeoutController = new AbortController();
   const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);

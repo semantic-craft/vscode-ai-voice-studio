@@ -1,7 +1,22 @@
 import { TTSApiError, type SynthesizeContext, type SynthesizeResult } from "./providers";
-import type { MiMoFormat, MiMoModel } from "./mimo-voices";
+import {
+  isPresetModel,
+  isVoiceCloneModel,
+  isVoiceDesignModel,
+  type MiMoFormat,
+  type MiMoModel,
+} from "./mimo-voices";
 
 const REQUEST_TIMEOUT_MS = 90_000;
+/** MiMo doc limit: base64-encoded audio sample ≤ 10 MB. */
+const MAX_CLONE_BASE64_BYTES = 10 * 1024 * 1024;
+
+export interface MiMoVoiceCloneSample {
+  /** Full data URL: `data:{mime};base64,XXXX` */
+  dataUrl: string;
+  /** Raw file size of the original audio in bytes (informational, not enforced). */
+  sizeBytes: number;
+}
 
 export interface MiMoSynthesizeArgs extends SynthesizeContext {
   apiKey: string;
@@ -12,6 +27,7 @@ export interface MiMoSynthesizeArgs extends SynthesizeContext {
   stylePrompt?: string;
   openingStyleTags?: string[];
   audioEventTags?: string[];
+  voiceCloneSample?: MiMoVoiceCloneSample;
 }
 
 interface MiMoResponse {
@@ -24,6 +40,16 @@ interface MiMoResponse {
     message?: string;
     code?: string | number;
   };
+}
+
+interface MiMoMessage {
+  role: "user" | "assistant";
+  content: string;
+}
+
+interface MiMoAudioField {
+  format: MiMoFormat;
+  voice?: string;
 }
 
 export async function synthesizeMiMo(args: MiMoSynthesizeArgs): Promise<SynthesizeResult> {
@@ -42,11 +68,13 @@ export async function synthesizeMiMo(args: MiMoSynthesizeArgs): Promise<Synthesi
   }
 
   const decoratedText = applyStyleTags(text, args.openingStyleTags, args.audioEventTags);
+  const { messages, audio } = buildRequestPayload(args, decoratedText);
+
   const url = `${normalizeBaseUrl(args.baseUrl)}/chat/completions`;
   const body = {
     model: args.model,
-    messages: buildMessages(decoratedText, args.stylePrompt),
-    audio: { format: args.format, voice: args.voice },
+    messages,
+    audio,
     stream: false,
   };
 
@@ -76,11 +104,11 @@ export async function synthesizeMiMo(args: MiMoSynthesizeArgs): Promise<Synthesi
       throw new TTSApiError(data.error.message || "MiMo TTS request failed.", normalizeErrorCode(data.error.code));
     }
 
-    const audio = data.choices?.[0]?.message?.audio?.data;
-    if (!audio) {
-      throw new TTSApiError(`No audio data returned from MiMo (${args.voice}).`, -4);
+    const audioData = data.choices?.[0]?.message?.audio?.data;
+    if (!audioData) {
+      throw new TTSApiError(`No audio data returned from MiMo (${describeVoice(args)}).`, -4);
     }
-    return { audioBase64: audio, format: args.format };
+    return { audioBase64: audioData, format: args.format };
   } catch (error) {
     if (error instanceof TTSApiError) throw error;
     if (args.signal?.aborted) {
@@ -93,6 +121,85 @@ export async function synthesizeMiMo(args: MiMoSynthesizeArgs): Promise<Synthesi
   } finally {
     clearTimeout(timeoutId);
     args.signal?.removeEventListener("abort", onAbort);
+  }
+}
+
+function buildRequestPayload(
+  args: MiMoSynthesizeArgs,
+  decoratedText: string,
+): { messages: MiMoMessage[]; audio: MiMoAudioField } {
+  const style = args.stylePrompt?.trim() ?? "";
+
+  if (isVoiceDesignModel(args.model)) {
+    if (!style) {
+      throw new TTSApiError(
+        "Voice Design requires a description in the Style / Voice description field.",
+        -1,
+      );
+    }
+    return {
+      messages: [
+        { role: "user", content: style },
+        { role: "assistant", content: decoratedText },
+      ],
+      // Doc explicitly omits the voice field for voicedesign requests.
+      audio: { format: args.format },
+    };
+  }
+
+  if (isVoiceCloneModel(args.model)) {
+    const sample = args.voiceCloneSample;
+    if (!sample) {
+      throw new TTSApiError(
+        "Voice Clone requires an uploaded audio sample (mp3 or wav).",
+        -1,
+      );
+    }
+    validateCloneSample(sample);
+    const messages: MiMoMessage[] = [];
+    // user content can be empty per the doc, but if a style prompt is set we forward it.
+    messages.push({ role: "user", content: style });
+    messages.push({ role: "assistant", content: decoratedText });
+    return {
+      messages,
+      audio: { format: args.format, voice: sample.dataUrl },
+    };
+  }
+
+  // Preset models (mimo-v2.5-tts / mimo-v2-tts).
+  if (!isPresetModel(args.model)) {
+    throw new TTSApiError(`Unsupported MiMo model: ${args.model}`, -1);
+  }
+  const messages: MiMoMessage[] = [];
+  if (style) {
+    messages.push({ role: "user", content: style });
+  }
+  messages.push({ role: "assistant", content: decoratedText });
+  return {
+    messages,
+    audio: { format: args.format, voice: args.voice },
+  };
+}
+
+function validateCloneSample(sample: MiMoVoiceCloneSample): void {
+  const match = sample.dataUrl.match(/^data:([^;]+);base64,([\s\S]+)$/);
+  if (!match) {
+    throw new TTSApiError("Voice clone sample must be a base64 data URL.", -1);
+  }
+  const mime = match[1].toLowerCase();
+  const allowedMime = mime === "audio/mpeg" || mime === "audio/mp3" || mime === "audio/wav" || mime === "audio/x-wav";
+  if (!allowedMime) {
+    throw new TTSApiError(
+      `Voice clone sample MIME ${mime} is not supported. Use audio/mpeg or audio/wav.`,
+      -1,
+    );
+  }
+  // Doc constraint: base64 string itself ≤ 10 MB.
+  if (match[2].length > MAX_CLONE_BASE64_BYTES) {
+    throw new TTSApiError(
+      `Voice clone sample exceeds 10 MB (base64). Provide a shorter clip.`,
+      -1,
+    );
   }
 }
 
@@ -115,14 +222,10 @@ function isSingingTag(tag: string): boolean {
   return ["唱歌", "sing", "singing"].includes(tag.toLowerCase());
 }
 
-function buildMessages(text: string, stylePrompt: string | undefined): Array<{ role: "user" | "assistant"; content: string }> {
-  const messages: Array<{ role: "user" | "assistant"; content: string }> = [];
-  const style = stylePrompt?.trim();
-  if (style) {
-    messages.push({ role: "user", content: style });
-  }
-  messages.push({ role: "assistant", content: text });
-  return messages;
+function describeVoice(args: MiMoSynthesizeArgs): string {
+  if (isVoiceDesignModel(args.model)) return "voice-design";
+  if (isVoiceCloneModel(args.model)) return "voice-clone";
+  return args.voice;
 }
 
 function parseJson(raw: string): MiMoResponse {

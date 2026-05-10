@@ -4,6 +4,13 @@ All notable changes to **AI Voice Studio** are documented here. The format is
 loosely [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.1] — 2026-05-11
+
+### Changed
+- README: added a top-level **Supported models** table so the
+  marketplace listing makes the four-provider model lineup
+  scannable at a glance. Docs-only — no code changes.
+
 ## [0.5.0] — 2026-05-11
 
 ### Added

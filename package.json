@@ -2,7 +2,7 @@
   "name": "ai-voice-studio",
   "displayName": "AI Voice Studio",
   "description": "Read text aloud in VS Code with OpenAI, MiniMax, MiMo, and Google Gemini TTS — voices, voice clone, emotion tags, and director mode from the sidebar.",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "publisher": "xianwei-zhang",
   "license": "MIT",
   "icon": "media/icon.png",

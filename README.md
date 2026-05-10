@@ -4,7 +4,7 @@ Read text aloud inside VS Code with **OpenAI**, **MiniMax**, or **MiMo** TTS —
 intermediate files, no separate apps. Driven from a sidebar panel and a single
 keyboard shortcut.
 
-> Migrated from the [Raycast AI Voice Studio](https://github.com/XWzhangSZU?tab=repositories)
+> Migrated from the [Raycast AI Voice Studio](https://github.com/xwzhangSZU/Raycast-Minimax-TTS)
 > extension. Same providers, same voice catalog, rebuilt for VS Code's Activity
 > Bar with chunked synthesis, pause/resume, and per-chunk prefetch.
 

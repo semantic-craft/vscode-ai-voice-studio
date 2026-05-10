@@ -26,5 +26,8 @@ tests/**
 *.log
 *.vsix
 
+# icon source (only icon.png ships)
+media/icon-source.svg
+
 # node_modules — ship none (extension is zero-dep at runtime)
 node_modules/**

@@ -5,14 +5,15 @@
   "version": "0.4.0",
   "publisher": "xianwei-zhang",
   "license": "MIT",
+  "icon": "media/icon.png",
   "repository": {
     "type": "git",
-    "url": "https://github.com/xwzhangSZU/Raycast-Minimax-TTS.git"
+    "url": "https://github.com/xwzhangSZU/vscode-ai-voice-studio.git"
   },
   "bugs": {
-    "url": "https://github.com/xwzhangSZU/Raycast-Minimax-TTS/issues"
+    "url": "https://github.com/xwzhangSZU/vscode-ai-voice-studio/issues"
   },
-  "homepage": "https://github.com/xwzhangSZU/Raycast-Minimax-TTS#readme",
+  "homepage": "https://github.com/xwzhangSZU/vscode-ai-voice-studio#readme",
   "engines": {
     "vscode": "^1.95.0"
   },

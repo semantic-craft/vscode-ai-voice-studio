@@ -30,6 +30,8 @@ import {
   isProviderId,
   isVoiceAvailableForModel,
   getVoiceById,
+  getVoicesForModel,
+  type ProviderCatalog,
   type ProviderId,
 } from "./core/providers";
 import { CATALOGS, synthesize, type ProviderArgs } from "./core/synthesize";
@@ -52,6 +54,16 @@ class PlaybackController {
   abort(): void {
     this.current?.abort();
     this.current = null;
+  }
+
+  isCurrent(sessionId: number): boolean {
+    return this.current !== null && this.sessionCounter === sessionId;
+  }
+
+  complete(sessionId: number): void {
+    if (this.isCurrent(sessionId)) {
+      this.current = null;
+    }
   }
 }
 
@@ -120,6 +132,9 @@ export function activate(context: vscode.ExtensionContext): void {
 
   provider.setMessageHandler((msg) => {
     switch (msg.type) {
+      case "ready":
+        refreshConfig();
+        return;
       case "requestRead":
         void readText(msg.text, "Webview");
         return;
@@ -137,7 +152,7 @@ export function activate(context: vscode.ExtensionContext): void {
         void setProviderVoice(msg.provider, msg.voice);
         return;
       case "modelChanged":
-        void setProviderModel(msg.provider, msg.model).then(refreshConfig);
+        void applyModelChange(msg.provider, msg.model, msg.voice).then(refreshConfig);
         return;
       case "mimoStyleTagsChanged":
         void setMiMoOpeningStyleTags(msg.tags);
@@ -238,7 +253,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }
 
     const voiceLabel = describeVoice(cfg);
-    provider.reveal();
+    await provider.reveal();
 
     const chunks = chunkText(trimmed, { maxChars: cfg.chunkSize });
     if (chunks.length === 0) return;
@@ -266,10 +281,14 @@ export function activate(context: vscode.ExtensionContext): void {
         },
         signal,
       );
+      if (!playback.isCurrent(sessionId)) return;
       provider.postSessionEnd(sessionId, result.cancelled);
+      playback.complete(sessionId);
       statusBar.set({ kind: "idle" });
     } catch (err) {
+      if (!playback.isCurrent(sessionId)) return;
       provider.postSessionEnd(sessionId, true);
+      playback.complete(sessionId);
       statusBar.set({ kind: "error" });
       handleError(err, provider);
     }
@@ -337,6 +356,13 @@ async function pickProvider(title: string): Promise<ProviderId | undefined> {
   return picked && isProviderId(picked.id) ? picked.id : undefined;
 }
 
+async function applyModelChange(provider: ProviderId, model: string, voice: string | undefined): Promise<void> {
+  await setProviderModel(provider, model);
+  if (voice?.trim()) {
+    await setProviderVoice(provider, voice.trim());
+  }
+}
+
 async function resolveTextToRead(): Promise<string | undefined> {
   const editor = vscode.window.activeTextEditor;
   if (editor && !editor.selection.isEmpty) {
@@ -359,27 +385,27 @@ function buildProviderArgs(
   const catalog = CATALOGS[cfg.provider];
   switch (cfg.provider) {
     case "openai": {
-      const voice = getVoiceById(catalog, cfg.openai.voice);
-      if (!voice || !isVoiceAvailableForModel(voice, cfg.openai.model)) return undefined;
+      const voice = resolveVoiceId(catalog, cfg.openai.voice, cfg.openai.model);
+      if (!voice) return undefined;
       return {
         provider: "openai",
         apiKey,
         baseUrl: cfg.openai.baseUrl,
         model: cfg.openai.model,
-        voice: cfg.openai.voice,
+        voice,
         format: cfg.openai.format,
         instructions: cfg.openai.instructions,
       };
     }
     case "minimax": {
-      const voice = getVoiceById(catalog, cfg.minimax.voice);
-      if (!voice || !isVoiceAvailableForModel(voice, cfg.minimax.model)) return undefined;
+      const voice = resolveVoiceId(catalog, cfg.minimax.voice, cfg.minimax.model);
+      if (!voice) return undefined;
       return {
         provider: "minimax",
         apiKey,
         region: cfg.minimax.region,
         model: cfg.minimax.model,
-        voice: cfg.minimax.voice,
+        voice,
         format: cfg.minimax.format,
         speed: cfg.minimax.speed,
         vol: cfg.minimax.vol,
@@ -393,8 +419,8 @@ function buildProviderArgs(
       };
     }
     case "mimo": {
-      const voice = getVoiceById(catalog, cfg.mimo.voice);
-      if (!voice || !isVoiceAvailableForModel(voice, cfg.mimo.model)) return undefined;
+      const voice = resolveVoiceId(catalog, cfg.mimo.voice, cfg.mimo.model);
+      if (!voice) return undefined;
       const cloneRecord = getMiMoVoiceCloneSample(context.globalState);
       const voiceCloneSample = cloneRecord
         ? { dataUrl: cloneRecord.dataUrl, sizeBytes: cloneRecord.sizeBytes }
@@ -404,7 +430,7 @@ function buildProviderArgs(
         apiKey,
         baseUrl: cfg.mimo.baseUrl,
         model: cfg.mimo.model,
-        voice: cfg.mimo.voice,
+        voice,
         format: cfg.mimo.format,
         stylePrompt: cfg.mimo.stylePrompt || undefined,
         openingStyleTags: cfg.mimo.openingStyleTags.length ? cfg.mimo.openingStyleTags : undefined,
@@ -413,19 +439,25 @@ function buildProviderArgs(
       };
     }
     case "gemini": {
-      const voice = getVoiceById(catalog, cfg.gemini.voice);
-      if (!voice || !isVoiceAvailableForModel(voice, cfg.gemini.model)) return undefined;
+      const voice = resolveVoiceId(catalog, cfg.gemini.voice, cfg.gemini.model);
+      if (!voice) return undefined;
       return {
         provider: "gemini",
         apiKey,
         baseUrl: cfg.gemini.baseUrl,
         model: cfg.gemini.model,
-        voice: cfg.gemini.voice,
+        voice,
         format: "wav",
         stylePreamble: cfg.gemini.stylePreamble || undefined,
       };
     }
   }
+}
+
+function resolveVoiceId(catalog: ProviderCatalog, voiceId: string, model: string): string | undefined {
+  const voice = getVoiceById(catalog, voiceId);
+  if (voice && isVoiceAvailableForModel(voice, model)) return voice.id;
+  return getVoicesForModel(catalog, model)[0]?.id;
 }
 
 function describeVoice(cfg: AppConfig): string {
@@ -438,8 +470,17 @@ function describeVoice(cfg: AppConfig): string {
         : cfg.provider === "mimo"
           ? cfg.mimo.voice
           : cfg.gemini.voice;
-  const voice = getVoiceById(catalog, voiceId);
-  return voice?.name ?? voiceId;
+  const model =
+    cfg.provider === "openai"
+      ? cfg.openai.model
+      : cfg.provider === "minimax"
+        ? cfg.minimax.model
+        : cfg.provider === "mimo"
+          ? cfg.mimo.model
+          : cfg.gemini.model;
+  const resolved = resolveVoiceId(catalog, voiceId, model);
+  const voice = resolved ? getVoiceById(catalog, resolved) : undefined;
+  return voice?.name ?? resolved ?? voiceId;
 }
 
 async function applyPresetSave(preset: MiMoStylePreset): Promise<void> {

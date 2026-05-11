@@ -76,7 +76,7 @@ provider keeps its own voice / model selection and API key.
 
 1. Install the `.vsix` (or from the Marketplace once published):
    ```
-   code --install-extension ai-voice-studio-0.5.1.vsix
+   code --install-extension ai-voice-studio-0.5.2.vsix
    ```
 2. Open the **AI Voice Studio** entry in the Activity Bar.
 3. Click the **Set key…** link in the sidebar header (or run
@@ -200,12 +200,11 @@ provider keeps its own voice / model selection and API key.
 ## How chunking works
 
 Long input is split at Chinese / English sentence terminators
-(`。！？；…\.!?;`), merged so each chunk fits under `chunkSize`, and overflow
-inside one sentence falls back to soft-break punctuation (`，、,`). The
-session pipelines synthesis: while chunk *i* plays, chunk *i+1* is already
-being fetched. **Stop** aborts the in-flight `fetch` via `AbortController`;
-**Pause** only suspends the `<audio>` element so the prefetch keeps filling
-the queue.
+(`。！？；…\.!?;`), merged so each chunk fits under `chunkSize`, and oversized
+sentences are hard-split under the same limit. The session pipelines
+synthesis: while chunk *i* plays, chunk *i+1* is already being fetched.
+**Stop** aborts the in-flight `fetch` via `AbortController`; **Pause** only
+suspends the `<audio>` element so the prefetch keeps filling the queue.
 
 ## Troubleshooting
 
@@ -213,9 +212,9 @@ the queue.
   the command. Keys live in VS Code's SecretStorage.
 - *"Use a MiMo Token Plan key (tp-…), not a pay-as-you-go sk- key."* →
   MiMo's TTS endpoint only accepts Token Plan keys.
-- *"Invalid voice/model for …"* → switching models can leave a voice that
-  isn't supported. Re-pick a voice; the dropdown filters to the active
-  model.
+- *"Invalid voice/model for …"* → old settings may contain a stale voice.
+  Current versions auto-pick a supported voice for the active model; if the
+  message persists, re-pick a voice from the filtered dropdown.
 - *"Voice clone sample exceeds 10 MB."* → the per-request base64 limit is
   ~10 MB. Trim the source clip or re-encode at a lower bitrate.
 

@@ -10,6 +10,10 @@ export type ChunkSink = (payload: PlaybackChunkPayload) => void;
 
 export type ChunkSynthesizer = (text: string, signal: AbortSignal) => Promise<SynthesizeResult>;
 
+type SettledSynthesis =
+  | { ok: true; result: SynthesizeResult }
+  | { ok: false; error: unknown };
+
 export interface SessionResult {
   cancelled: boolean;
   emitted: number;
@@ -23,24 +27,24 @@ export async function runPlaybackSession(
 ): Promise<SessionResult> {
   if (chunks.length === 0) return { cancelled: false, emitted: 0 };
 
-  let pending: Promise<SynthesizeResult> | null = synthesizeChunk(chunks[0], signal);
+  let pending: Promise<SettledSynthesis> | null = settleSynthesis(synthesizeChunk(chunks[0], signal));
   let emitted = 0;
 
   for (let i = 0; i < chunks.length; i++) {
     if (signal.aborted) return { cancelled: true, emitted };
 
     const current = pending!;
-    pending = i + 1 < chunks.length ? synthesizeChunk(chunks[i + 1], signal) : null;
+    pending = i + 1 < chunks.length ? settleSynthesis(synthesizeChunk(chunks[i + 1], signal)) : null;
 
-    let result: SynthesizeResult;
-    try {
-      result = await current;
-    } catch (err) {
+    const settled = await current;
+    if (!settled.ok) {
+      const err = settled.error;
       if (signal.aborted || (err instanceof TTSApiError && err.code === -7)) {
         return { cancelled: true, emitted };
       }
       throw err;
     }
+    const { result } = settled;
 
     if (signal.aborted) return { cancelled: true, emitted };
 
@@ -49,4 +53,12 @@ export async function runPlaybackSession(
   }
 
   return { cancelled: false, emitted };
+}
+
+async function settleSynthesis(promise: Promise<SynthesizeResult>): Promise<SettledSynthesis> {
+  try {
+    return { ok: true, result: await promise };
+  } catch (error) {
+    return { ok: false, error };
+  }
 }

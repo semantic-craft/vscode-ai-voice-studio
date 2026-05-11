@@ -34,7 +34,7 @@ type IncomingMessage =
   | { type: "rateChanged"; rate: number }
   | { type: "providerChanged"; provider: ProviderId }
   | { type: "voiceChanged"; provider: ProviderId; voice: string }
-  | { type: "modelChanged"; provider: ProviderId; model: string }
+  | { type: "modelChanged"; provider: ProviderId; model: string; voice?: string }
   | { type: "mimoStyleTagsChanged"; tags: string[] }
   | { type: "mimoAudioEventTagsChanged"; tags: string[] }
   | { type: "mimoStylePromptChanged"; text: string }
@@ -121,12 +121,12 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
     });
   }
 
-  reveal(): void {
+  async reveal(): Promise<void> {
     if (this.view) {
       this.view.show?.(true);
       return;
     }
-    vscode.commands.executeCommand("aiVoiceStudio.studio.focus");
+    await vscode.commands.executeCommand("aiVoiceStudio.studio.focus");
   }
 
   resolveWebviewView(
@@ -965,6 +965,21 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         return v ? v.name : (activeProviderState().voice || "—");
       }
 
+      function voicesForModel(catalog, model) {
+        return (catalog.voices || []).filter((v) => !v.models || v.models.length === 0 || v.models.indexOf(model) !== -1);
+      }
+
+      function ensureActiveVoiceForModel() {
+        const catalog = activeCatalog();
+        const ps = activeProviderState();
+        const voices = voicesForModel(catalog, ps.model);
+        if (voices.length === 0) return undefined;
+        const current = voices.find((v) => v.id === ps.voice);
+        if (current) return current.id;
+        ps.voice = voices[0].id;
+        return ps.voice;
+      }
+
       // ---------- core renderers ----------
 
       function renderProviderStrip() {
@@ -1009,7 +1024,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         const catalog = activeCatalog();
         const model = activeProviderState().model;
         els.voice.innerHTML = "";
-        const voices = catalog.voices.filter((v) => !v.models || v.models.length === 0 || v.models.indexOf(model) !== -1);
+        const voices = voicesForModel(catalog, model);
         const groups = new Map();
         for (const v of voices) {
           const cat = v.category || "Voices";
@@ -1434,12 +1449,10 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
           if (els.model.value === "mimo-v2.5-tts-voicedesign") ps.voice = VOICE_DESIGN_PLACEHOLDER;
           else if (els.model.value === "mimo-v2.5-tts-voiceclone") ps.voice = VOICE_CLONE_PLACEHOLDER;
         }
+        const voice = ensureActiveVoiceForModel();
         renderVoiceOptions();
         renderProviderBlocks();
-        vscode.postMessage({ type: "modelChanged", provider: state.provider, model: els.model.value });
-        if (isMimo()) {
-          vscode.postMessage({ type: "voiceChanged", provider: "mimo", voice: ps.voice });
-        }
+        vscode.postMessage({ type: "modelChanged", provider: state.provider, model: els.model.value, voice: voice });
       });
 
       els.voice.addEventListener("change", () => {
@@ -1597,14 +1610,16 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
             return;
           }
           let mime = file.type;
-          if (!mime) mime = ext === "wav" ? "audio/wav" : "audio/mpeg";
+          const supportedMime = mime === "audio/mpeg" || mime === "audio/mp3" || mime === "audio/wav" || mime === "audio/x-wav";
+          if (!supportedMime) mime = ext === "wav" ? "audio/wav" : "audio/mpeg";
+          const normalizedDataUrl = "data:" + mime + ";base64," + base64Part;
           if (!state.mimo) state.mimo = {};
           state.mimo.voiceCloneSample = { fileName: file.name, mime: mime, sizeBytes: file.size };
           renderCloneStatus();
           setStatus("Voice clone sample loaded — " + file.name, "success");
           vscode.postMessage({
             type: "mimoVoiceCloneSampleSet",
-            dataUrl: dataUrl,
+            dataUrl: normalizedDataUrl,
             mime: mime,
             fileName: file.name,
             sizeBytes: file.size,

@@ -4,6 +4,20 @@ All notable changes to **AI Voice Studio** are documented here. The format is
 loosely [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.5.2] — 2026-05-11
+
+### Fixed
+- Hardened runtime playback state so stale cancelled sessions no longer
+  overwrite a newer read session.
+- Fixed one-ahead chunk prefetch error handling to avoid unhandled promise
+  rejections when the next chunk fails before the current chunk finishes.
+- Fixed model switching so a provider always keeps a voice supported by the
+  active model, including stale settings from older sessions.
+- Fixed MiMo voice-clone uploads from files with missing or generic browser
+  MIME types by normalizing the stored data URL.
+- Fixed long unpunctuated input so it is still hard-split under
+  `aiVoiceStudio.chunkSize` instead of sending an oversized request.
+
 ## [0.5.1] — 2026-05-11
 
 ### Changed

@@ -150,7 +150,10 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         return;
       }
       if (message.type === "rateChanged") {
-        void setPlaybackRate(message.rate);
+        void setPlaybackRate(message.rate).catch((err) => {
+          this.postStatus(err instanceof Error ? err.message : String(err), "error");
+        });
+        return;
       }
       this.handler?.(message);
     });
@@ -819,6 +822,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       let activeSession = null;
       let sessionDone = false;
       let chunksPlayed = 0;
+      let playGeneration = 0;
       let pendingAction = null;
       const queue = [];
 
@@ -930,6 +934,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       }
 
       function resetSession() {
+        playGeneration += 1;
         queue.length = 0;
         activeSession = null;
         sessionDone = false;
@@ -938,6 +943,16 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         els.player.pause();
         els.player.removeAttribute("src");
         els.player.load();
+      }
+
+      function failActivePlayback(message) {
+        const shouldNotifyExtension = !!activeSession;
+        resetSession();
+        setMode("idle");
+        setStatus(message, "error");
+        if (shouldNotifyExtension) {
+          vscode.postMessage({ type: "requestStop" });
+        }
       }
 
       function activeCatalog() {
@@ -957,6 +972,10 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         if (n < 1024) return n + " B";
         if (n < 1024 * 1024) return (n / 1024).toFixed(1) + " KB";
         return (n / 1024 / 1024).toFixed(2) + " MB";
+      }
+
+      function audioMime(format) {
+        return format === "mp3" ? "audio/mpeg" : "audio/" + format;
       }
 
       function activeVoiceLabel() {
@@ -1749,15 +1768,19 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
           }
           return;
         }
+        if (!activeSession) return;
         const next = queue.shift();
-        els.player.src = "data:audio/" + next.format + ";base64," + next.audioBase64;
+        const sessionId = activeSession.id;
+        const generation = playGeneration;
+        els.player.src = "data:" + audioMime(next.format) + ";base64," + next.audioBase64;
         els.player.playbackRate = parseFloat(els.rate.value);
         els.player.play().then(function () {
+          if (generation !== playGeneration || !activeSession || activeSession.id !== sessionId) return;
           setMode("playing");
           setStatus(next.label ? "Playing — " + next.label : "Playing.", "info");
         }).catch(function (err) {
-          setMode("idle");
-          setStatus("Playback failed: " + (err && err.message || err), "error");
+          if (generation !== playGeneration || !activeSession || activeSession.id !== sessionId) return;
+          failActivePlayback("Playback failed: " + (err && err.message || err));
         });
       }
 
@@ -1767,8 +1790,8 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         startNextChunk();
       });
       els.player.addEventListener("error", () => {
-        setMode("idle");
-        setStatus("Audio decode failed.", "error");
+        if (!activeSession) return;
+        failActivePlayback("Audio decode failed.");
       });
 
       // ---- inbound messages ----
@@ -1810,6 +1833,9 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
             setStatus("Stopped.", "muted");
             break;
           case "status":
+            if (!activeSession && mode === "synth" && (msg.tone === "error" || msg.tone === "warn" || msg.tone === "muted")) {
+              setMode("idle");
+            }
             setStatus(msg.status, msg.tone, msg.action);
             break;
           case "config":

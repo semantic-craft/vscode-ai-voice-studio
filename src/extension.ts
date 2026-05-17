@@ -227,68 +227,75 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   async function readText(text: string, source: string): Promise<void> {
-    const trimmed = text.trim();
-    if (!trimmed) {
-      vscode.window.showWarningMessage("AI Voice Studio: nothing to read.");
-      return;
-    }
-
-    const cfg = getConfig();
-    const apiKey = await secrets.ensure(cfg.provider);
-    if (!apiKey) {
-      provider.postStatus(
-        `${PROVIDER_LABELS[cfg.provider]} API key not set.`,
-        "error",
-        { id: "requestSetKey", label: "Set API Key" },
-      );
-      statusBar.set({ kind: "error" });
-      return;
-    }
-
-    const args = buildProviderArgs(cfg, apiKey, context);
-    if (!args) {
-      provider.postStatus(`Invalid voice/model for ${PROVIDER_LABELS[cfg.provider]}.`, "error");
-      statusBar.set({ kind: "error" });
-      return;
-    }
-
-    const voiceLabel = describeVoice(cfg);
-    await provider.reveal();
-
-    const chunks = chunkText(trimmed, { maxChars: cfg.chunkSize });
-    if (chunks.length === 0) return;
-
-    const { signal, sessionId } = playback.begin();
-    provider.postSessionStart(sessionId, chunks.length);
-    statusBar.set({ kind: "synth" });
-    provider.postStatus(
-      chunks.length === 1
-        ? `Synthesizing with ${PROVIDER_LABELS[cfg.provider]} · ${voiceLabel}…`
-        : `Synthesizing ${chunks.length} chunks with ${PROVIDER_LABELS[cfg.provider]} · ${voiceLabel}…`,
-    );
-
+    let sessionId: number | undefined;
     try {
+      const trimmed = text.trim();
+      if (!trimmed) {
+        vscode.window.showWarningMessage("AI Voice Studio: nothing to read.");
+        return;
+      }
+
+      const cfg = getConfig();
+      const apiKey = await secrets.ensure(cfg.provider);
+      if (!apiKey) {
+        provider.postStatus(
+          `${PROVIDER_LABELS[cfg.provider]} API key not set.`,
+          "error",
+          { id: "requestSetKey", label: "Set API Key" },
+        );
+        statusBar.set({ kind: "error" });
+        return;
+      }
+
+      const args = buildProviderArgs(cfg, apiKey, context);
+      if (!args) {
+        provider.postStatus(`Invalid voice/model for ${PROVIDER_LABELS[cfg.provider]}.`, "error");
+        statusBar.set({ kind: "error" });
+        return;
+      }
+
+      const voiceLabel = describeVoice(cfg);
+      await provider.reveal();
+
+      const chunks = chunkText(trimmed, { maxChars: cfg.chunkSize });
+      if (chunks.length === 0) return;
+
+      const session = playback.begin();
+      const signal = session.signal;
+      const currentSessionId = session.sessionId;
+      sessionId = currentSessionId;
+      provider.postSessionStart(currentSessionId, chunks.length);
+      statusBar.set({ kind: "synth" });
+      provider.postStatus(
+        chunks.length === 1
+          ? `Synthesizing with ${PROVIDER_LABELS[cfg.provider]} · ${voiceLabel}…`
+          : `Synthesizing ${chunks.length} chunks with ${PROVIDER_LABELS[cfg.provider]} · ${voiceLabel}…`,
+      );
+
       const result = await runPlaybackSession(
         chunks,
         (chunkText, chunkSignal) => synthesize({ text: chunkText, signal: chunkSignal }, args),
         ({ index, total, result: out }) => {
+          if (!playback.isCurrent(currentSessionId)) return;
           const label =
             total > 1
               ? `${source} · ${voiceLabel} · ${index + 1}/${total}`
               : `${source} · ${voiceLabel}`;
-          provider.postPlay(sessionId, index, total, out.audioBase64, out.format, cfg.playbackRate, label);
+          provider.postPlay(currentSessionId, index, total, out.audioBase64, out.format, cfg.playbackRate, label);
           statusBar.set({ kind: "playing", index: index + 1, total });
         },
         signal,
       );
-      if (!playback.isCurrent(sessionId)) return;
-      provider.postSessionEnd(sessionId, result.cancelled);
-      playback.complete(sessionId);
+      if (!playback.isCurrent(currentSessionId)) return;
+      provider.postSessionEnd(currentSessionId, result.cancelled);
+      playback.complete(currentSessionId);
       statusBar.set({ kind: "idle" });
     } catch (err) {
-      if (!playback.isCurrent(sessionId)) return;
-      provider.postSessionEnd(sessionId, true);
-      playback.complete(sessionId);
+      if (sessionId !== undefined) {
+        if (!playback.isCurrent(sessionId)) return;
+        playback.abort();
+        provider.postSessionEnd(sessionId, true);
+      }
       statusBar.set({ kind: "error" });
       handleError(err, provider);
     }

@@ -40,6 +40,9 @@ export async function synthesizeMiniMax(args: MiniMaxSynthesizeArgs): Promise<Sy
   if (!args.apiKey) {
     throw new TTSApiError("MiniMax API key is missing.", -1);
   }
+  if (args.signal?.aborted) {
+    throw new TTSApiError("TTS synthesis cancelled.", -7);
+  }
 
   const voiceSetting: Record<string, unknown> = {
     voice_id: args.voice,
@@ -111,6 +114,9 @@ export async function synthesizeMiniMax(args: MiniMaxSynthesizeArgs): Promise<Sy
     if (!audioHex) {
       throw new TTSApiError(`No audio data returned (trace_id: ${payload.trace_id || "unknown"}).`, -4);
     }
+    if (!isHexAudio(audioHex)) {
+      throw new TTSApiError(`MiniMax returned malformed hex audio data (trace_id: ${payload.trace_id || "unknown"}).`, -4);
+    }
 
     const buffer = Buffer.from(audioHex, "hex");
     if (buffer.length === 0) {
@@ -134,4 +140,8 @@ export async function synthesizeMiniMax(args: MiniMaxSynthesizeArgs): Promise<Sy
 
 function getBaseUrl(region: MiniMaxRegion): string {
   return region === "global" ? "https://api.minimax.io" : "https://api.minimaxi.com";
+}
+
+function isHexAudio(value: string): boolean {
+  return value.length > 0 && value.length % 2 === 0 && /^[0-9a-f]+$/i.test(value);
 }

@@ -66,6 +66,9 @@ export async function synthesizeMiMo(args: MiMoSynthesizeArgs): Promise<Synthesi
       -1,
     );
   }
+  if (args.signal?.aborted) {
+    throw new TTSApiError("TTS synthesis cancelled.", -7);
+  }
 
   const decoratedText = applyStyleTags(text, args.openingStyleTags, args.audioEventTags);
   const { messages, audio } = buildRequestPayload(args, decoratedText);
@@ -108,7 +111,7 @@ export async function synthesizeMiMo(args: MiMoSynthesizeArgs): Promise<Synthesi
     if (!audioData) {
       throw new TTSApiError(`No audio data returned from MiMo (${describeVoice(args)}).`, -4);
     }
-    return { audioBase64: audioData, format: args.format };
+    return { audioBase64: normalizeBase64Audio(audioData, "MiMo"), format: args.format };
   } catch (error) {
     if (error instanceof TTSApiError) throw error;
     if (args.signal?.aborted) {
@@ -244,4 +247,17 @@ function normalizeErrorCode(code: string | number | undefined): number {
 
 function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/+$/, "").replace(/\/chat\/completions$/, "");
+}
+
+function normalizeBase64Audio(value: string, provider: string): string {
+  const clean = value.replace(/\s+/g, "");
+  const padded = clean.padEnd(Math.ceil(clean.length / 4) * 4, "=");
+  if (!isBase64(padded) || Buffer.from(padded, "base64").length === 0) {
+    throw new TTSApiError(`${provider} returned malformed base64 audio data.`, -4);
+  }
+  return padded;
+}
+
+function isBase64(value: string): boolean {
+  return /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value);
 }

@@ -53,6 +53,9 @@ export async function synthesizeGemini(args: GeminiSynthesizeArgs): Promise<Synt
   if (!args.apiKey) {
     throw new TTSApiError("Gemini API key is missing.", -1);
   }
+  if (args.signal?.aborted) {
+    throw new TTSApiError("TTS synthesis cancelled.", -7);
+  }
 
   const transcript = composeTranscript(text, args.stylePreamble);
   const url = `${normalizeBaseUrl(args.baseUrl)}/models/${encodeURIComponent(args.model)}:generateContent`;
@@ -163,7 +166,7 @@ function parseSampleRate(mimeType: string): number | null {
  * element can play it without any extra decoding on the JS side.
  */
 function wrapPcmAsWav(pcmBase64: string, sampleRate: number, channels: number, bitsPerSample: number): string {
-  const pcm = Buffer.from(pcmBase64, "base64");
+  const pcm = decodeBase64Pcm(pcmBase64);
   const byteRate = (sampleRate * channels * bitsPerSample) / 8;
   const blockAlign = (channels * bitsPerSample) / 8;
   const dataSize = pcm.length;
@@ -185,4 +188,21 @@ function wrapPcmAsWav(pcmBase64: string, sampleRate: number, channels: number, b
   header.writeUInt32LE(dataSize, 40);
 
   return Buffer.concat([header, pcm]).toString("base64");
+}
+
+function decodeBase64Pcm(value: string): Buffer {
+  const clean = value.replace(/\s+/g, "");
+  const padded = clean.padEnd(Math.ceil(clean.length / 4) * 4, "=");
+  if (!isBase64(padded)) {
+    throw new TTSApiError("Gemini returned malformed base64 audio data.", -4);
+  }
+  const pcm = Buffer.from(padded, "base64");
+  if (pcm.length === 0) {
+    throw new TTSApiError("Gemini returned empty PCM audio data.", -4);
+  }
+  return pcm;
+}
+
+function isBase64(value: string): boolean {
+  return /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value);
 }

@@ -124,8 +124,8 @@ export function getConfig(): AppConfig {
       pitch: clampMiniMaxPitch(cfg.get<number>("minimax.pitch") ?? MINIMAX_DEFAULT_PITCH),
       emotion: normalizeEmotion(cfg.get<string>("minimax.emotion")),
       channel: normalizeChannel(cfg.get<number>("minimax.channel") ?? 1),
-      sampleRate: cfg.get<number>("minimax.sampleRate") || DEFAULT_SAMPLE_RATE,
-      bitrate: cfg.get<number>("minimax.bitrate") || DEFAULT_BITRATE,
+      sampleRate: normalizePositiveInteger(cfg.get<unknown>("minimax.sampleRate"), DEFAULT_SAMPLE_RATE),
+      bitrate: normalizePositiveInteger(cfg.get<unknown>("minimax.bitrate"), DEFAULT_BITRATE),
       languageBoost: cfg.get<string>("minimax.languageBoost")?.trim() || "",
       pronunciationDict: normalizeTagList(cfg.get<string[]>("minimax.pronunciationDict")),
     },
@@ -361,9 +361,22 @@ function clampChunkSize(size: number): number {
   return Math.max(80, Math.min(2000, Math.round(size)));
 }
 
-function normalizeTagList(tags: string[] | undefined): string[] {
+function normalizePositiveInteger(value: unknown, fallback: number): number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0
+    ? Math.round(value)
+    : fallback;
+}
+
+function normalizeTagList(tags: unknown): string[] {
   if (!Array.isArray(tags)) return [];
-  return Array.from(new Set(tags.map((t) => t?.trim()).filter((t): t is string => !!t)));
+  return Array.from(
+    new Set(
+      tags
+        .filter((t): t is string => typeof t === "string")
+        .map((t) => t.trim())
+        .filter(Boolean),
+    ),
+  );
 }
 
 function normalizePresetList(raw: unknown[] | undefined): MiMoStylePreset[] {

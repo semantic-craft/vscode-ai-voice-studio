@@ -20,6 +20,9 @@ export async function synthesizeOpenAI(args: OpenAISynthesizeArgs): Promise<Synt
   if (!args.apiKey) {
     throw new TTSApiError("OpenAI API key is missing.", -1);
   }
+  if (args.signal?.aborted) {
+    throw new TTSApiError("TTS synthesis cancelled.", -7);
+  }
 
   const url = `${stripTrailingSlash(args.baseUrl)}/audio/speech`;
   const body: Record<string, unknown> = {

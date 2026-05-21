@@ -47,6 +47,8 @@ export interface OpenAIConfig {
   voice: string;
   format: OpenAIResponseFormat;
   instructions: string;
+  speed: number;
+  language: string;
   baseUrl: string;
 }
 
@@ -112,6 +114,8 @@ export function getConfig(): AppConfig {
       voice: cfg.get<string>("openai.voice")?.trim() || OPENAI_DEFAULT_VOICE,
       format: normalizeOpenAIFormat(cfg.get<string>("openai.format")),
       instructions: cfg.get<string>("openai.instructions")?.trim() || "",
+      speed: clampOpenAISpeed(cfg.get<number>("openai.speed") ?? 1),
+      language: cfg.get<string>("openai.language")?.trim() || "",
       baseUrl: cfg.get<string>("openai.baseUrl")?.trim() || OPENAI_DEFAULT_BASE_URL,
     },
     minimax: {
@@ -158,9 +162,24 @@ export async function setGeminiStylePreamble(text: string): Promise<void> {
   await cfg.update("gemini.stylePreamble", text, vscode.ConfigurationTarget.Global);
 }
 
+export async function setOpenAIFormat(format: string): Promise<void> {
+  const cfg = vscode.workspace.getConfiguration(SECTION);
+  await cfg.update("openai.format", normalizeOpenAIFormat(format), vscode.ConfigurationTarget.Global);
+}
+
 export async function setOpenAIInstructions(text: string): Promise<void> {
   const cfg = vscode.workspace.getConfiguration(SECTION);
   await cfg.update("openai.instructions", text, vscode.ConfigurationTarget.Global);
+}
+
+export async function setOpenAISpeed(speed: number): Promise<void> {
+  const cfg = vscode.workspace.getConfiguration(SECTION);
+  await cfg.update("openai.speed", clampOpenAISpeed(speed), vscode.ConfigurationTarget.Global);
+}
+
+export async function setOpenAILanguage(language: string): Promise<void> {
+  const cfg = vscode.workspace.getConfiguration(SECTION);
+  await cfg.update("openai.language", language.trim(), vscode.ConfigurationTarget.Global);
 }
 
 export async function setMiniMaxSpeed(speed: number): Promise<void> {
@@ -286,7 +305,15 @@ function normalizeOpenAIModel(value: string | undefined): OpenAITTSModel {
 }
 
 function normalizeOpenAIFormat(value: string | undefined): OpenAIResponseFormat {
-  return value === "wav" || value === "mp3" ? value : OPENAI_DEFAULT_FORMAT;
+  if (value === "mp3" || value === "wav" || value === "opus" || value === "aac" || value === "flac" || value === "pcm") {
+    return value;
+  }
+  return OPENAI_DEFAULT_FORMAT;
+}
+
+function clampOpenAISpeed(speed: number): number {
+  if (!Number.isFinite(speed)) return 1;
+  return Math.max(0.25, Math.min(4, speed));
 }
 
 function normalizeMiniMaxModel(value: string | undefined): MiniMaxModel {

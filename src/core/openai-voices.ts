@@ -1,7 +1,7 @@
 import type { ProviderCatalog, VoiceConfig } from "./providers";
 
 export type OpenAITTSModel = "gpt-4o-mini-tts" | "tts-1" | "tts-1-hd";
-export type OpenAIResponseFormat = "mp3" | "wav";
+export type OpenAIResponseFormat = "mp3" | "wav" | "opus" | "aac" | "flac" | "pcm";
 
 export const DEFAULT_MODEL: OpenAITTSModel = "gpt-4o-mini-tts";
 export const DEFAULT_VOICE = "cedar";
@@ -31,6 +31,25 @@ export const VOICES: VoiceConfig[] = [
   { id: "shimmer", name: "Shimmer", category: "General",     description: "Light, upbeat voice.",             models: ALL_MODELS },
   { id: "verse",   name: "Verse",   category: "Expressive",  description: "Lyrical, stylized voice.",         models: LATEST_ONLY },
 ];
+
+export const OPENAI_RESPONSE_FORMATS: { id: OpenAIResponseFormat; label: string }[] = [
+  { id: "mp3", label: "MP3 — general-purpose (default)" },
+  { id: "opus", label: "Opus — low-latency streaming" },
+  { id: "aac", label: "AAC — iOS / Android / YouTube" },
+  { id: "flac", label: "FLAC — lossless archival" },
+  { id: "wav", label: "WAV — uncompressed, low-latency" },
+  { id: "pcm", label: "PCM — raw 24 kHz 16-bit" },
+];
+
+export const SPEED_MODELS: OpenAITTSModel[] = ["tts-1", "tts-1-hd"];
+
+export function supportsSpeed(model: OpenAITTSModel): boolean {
+  return SPEED_MODELS.includes(model);
+}
+
+export function supportsInstructions(model: OpenAITTSModel): boolean {
+  return model === "gpt-4o-mini-tts";
+}
 
 export const OPENAI_CATALOG: ProviderCatalog = {
   id: "openai",

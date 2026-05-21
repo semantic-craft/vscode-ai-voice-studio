@@ -16,7 +16,10 @@ import {
   setMiniMaxRegion,
   setMiniMaxSpeed,
   setMiniMaxVol,
+  setOpenAIFormat,
   setOpenAIInstructions,
+  setOpenAILanguage,
+  setOpenAISpeed,
   setProvider,
   setProviderModel,
   setProviderVoice,
@@ -192,6 +195,15 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       case "openaiInstructionsChanged":
         void setOpenAIInstructions(msg.text);
+        return;
+      case "openaiFormatChanged":
+        void setOpenAIFormat(msg.format);
+        return;
+      case "openaiSpeedChanged":
+        void setOpenAISpeed(msg.speed);
+        return;
+      case "openaiLanguageChanged":
+        void setOpenAILanguage(msg.text);
         return;
       case "minimaxSpeedChanged":
         void setMiniMaxSpeed(msg.speed);
@@ -402,6 +414,8 @@ function buildProviderArgs(
         voice,
         format: cfg.openai.format,
         instructions: cfg.openai.instructions,
+        speed: cfg.openai.speed !== 1 ? cfg.openai.speed : undefined,
+        language: cfg.openai.language || undefined,
       };
     }
     case "minimax": {

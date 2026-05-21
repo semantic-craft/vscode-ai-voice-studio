@@ -1,5 +1,6 @@
 import { TTSApiError, type SynthesizeContext, type SynthesizeResult } from "./providers";
 import type { OpenAIResponseFormat, OpenAITTSModel } from "./openai-voices";
+import { supportsInstructions, supportsSpeed } from "./openai-voices";
 
 const REQUEST_TIMEOUT_MS = 90_000;
 
@@ -10,6 +11,8 @@ export interface OpenAISynthesizeArgs extends SynthesizeContext {
   voice: string;
   format: OpenAIResponseFormat;
   instructions?: string;
+  speed?: number;
+  language?: string;
 }
 
 export async function synthesizeOpenAI(args: OpenAISynthesizeArgs): Promise<SynthesizeResult> {
@@ -33,6 +36,12 @@ export async function synthesizeOpenAI(args: OpenAISynthesizeArgs): Promise<Synt
   };
   if (supportsInstructions(args.model) && args.instructions?.trim()) {
     body.instructions = args.instructions.trim();
+  }
+  if (supportsSpeed(args.model) && args.speed !== undefined && args.speed !== 1) {
+    body.speed = args.speed;
+  }
+  if (args.language?.trim()) {
+    body.language = args.language.trim();
   }
 
   const timeoutController = new AbortController();
@@ -90,6 +99,3 @@ function stripTrailingSlash(url: string): string {
   return url.replace(/\/+$/, "");
 }
 
-function supportsInstructions(model: OpenAITTSModel): boolean {
-  return model === "gpt-4o-mini-tts";
-}

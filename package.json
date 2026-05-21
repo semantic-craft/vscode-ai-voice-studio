@@ -145,7 +145,15 @@
         },
         "aiVoiceStudio.openai.format": {
           "type": "string",
-          "enum": ["mp3", "wav"],
+          "enum": ["mp3", "opus", "aac", "flac", "wav", "pcm"],
+          "enumDescriptions": [
+            "MP3 — general-purpose (default)",
+            "Opus — low-latency internet streaming",
+            "AAC — iOS / Android / YouTube",
+            "FLAC — lossless archival",
+            "WAV — uncompressed, low-latency playback",
+            "PCM — raw 24 kHz 16-bit samples, no header"
+          ],
           "default": "mp3",
           "description": "OpenAI audio response format."
         },
@@ -153,6 +161,18 @@
           "type": "string",
           "default": "",
           "description": "Speaking instructions (gpt-4o-mini-tts only). Example: 'Read naturally; preserve Chinese and English pronunciation.'"
+        },
+        "aiVoiceStudio.openai.speed": {
+          "type": "number",
+          "minimum": 0.25,
+          "maximum": 4,
+          "default": 1,
+          "description": "Server-side synthesis speed (tts-1 / tts-1-hd only, 0.25–4.0). Not available for gpt-4o-mini-tts."
+        },
+        "aiVoiceStudio.openai.language": {
+          "type": "string",
+          "default": "",
+          "description": "Target language hint (BCP-47 or name). Improves multi-language quality. Examples: 'zh', 'ja', 'fr'. Leave empty for auto-detect."
         },
         "aiVoiceStudio.openai.baseUrl": {
           "type": "string",

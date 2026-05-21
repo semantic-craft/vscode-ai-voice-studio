@@ -4,6 +4,37 @@ All notable changes to **AI Voice Studio** are documented here. The format is
 loosely [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.0] — 2026-05-22
+
+### Added
+- **OpenAI full format palette.** Six output formats — `mp3`, `opus`,
+  `aac`, `flac`, `wav`, `pcm` — selectable from the sidebar dropdown
+  with descriptions. PCM is auto-wrapped with a 24 kHz / 16-bit WAV
+  header for in-browser playback.
+- **OpenAI server-side speed control.** Slider (0.25–4.0×) for `tts-1`
+  and `tts-1-hd`; automatically hidden when `gpt-4o-mini-tts` is
+  selected. Persisted only on slider release to avoid disk-write storms.
+- **Custom voice ID support.** The voice field accepts arbitrary strings,
+  so OpenAI custom voices (`voice_123abc`) work via `settings.json`
+  without any extra UI.
+
+### Changed
+- Config updates from the webview are now serialized through a
+  `queueConfigUpdate` chain, preventing race conditions when the user
+  changes multiple settings in quick succession.
+- All pending edits (instructions, speed, style prompts, preambles) are
+  flushed via a single `commitPendingProviderEdits()` before Read and
+  Test Voice, replacing the scattered per-provider flush blocks.
+- MiniMax speed / volume / pitch sliders now split `input` (visual
+  feedback) from `change` (config write), matching the new OpenAI speed
+  pattern and eliminating high-frequency disk writes during dragging.
+- `activationEvents` narrowed from `onStartupFinished` to the six
+  specific views and commands, reducing cold-start overhead.
+
+### Fixed
+- Hardened audio playback and validation against edge cases from the
+  previous release cycle.
+
 ## [0.5.2] — 2026-05-11
 
 ### Fixed

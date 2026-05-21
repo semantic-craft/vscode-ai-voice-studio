@@ -48,7 +48,6 @@ export interface OpenAIConfig {
   format: OpenAIResponseFormat;
   instructions: string;
   speed: number;
-  language: string;
   baseUrl: string;
 }
 
@@ -111,16 +110,15 @@ export function getConfig(): AppConfig {
     chunkSize: clampChunkSize(cfg.get<number>("chunkSize") ?? 250),
     openai: {
       model: normalizeOpenAIModel(cfg.get<string>("openai.model")),
-      voice: cfg.get<string>("openai.voice")?.trim() || OPENAI_DEFAULT_VOICE,
+      voice: getTrimmedString(cfg, "openai.voice") || OPENAI_DEFAULT_VOICE,
       format: normalizeOpenAIFormat(cfg.get<string>("openai.format")),
-      instructions: cfg.get<string>("openai.instructions")?.trim() || "",
+      instructions: getTrimmedString(cfg, "openai.instructions"),
       speed: clampOpenAISpeed(cfg.get<number>("openai.speed") ?? 1),
-      language: cfg.get<string>("openai.language")?.trim() || "",
-      baseUrl: cfg.get<string>("openai.baseUrl")?.trim() || OPENAI_DEFAULT_BASE_URL,
+      baseUrl: getTrimmedString(cfg, "openai.baseUrl") || OPENAI_DEFAULT_BASE_URL,
     },
     minimax: {
       model: normalizeMiniMaxModel(cfg.get<string>("minimax.model")),
-      voice: cfg.get<string>("minimax.voice")?.trim() || MINIMAX_DEFAULT_VOICE,
+      voice: getTrimmedString(cfg, "minimax.voice") || MINIMAX_DEFAULT_VOICE,
       format: normalizeMiniMaxFormat(cfg.get<string>("minimax.format")),
       region: normalizeRegion(cfg.get<string>("minimax.region")),
       speed: clampMiniMaxSpeed(cfg.get<number>("minimax.speed") ?? 1),
@@ -130,24 +128,24 @@ export function getConfig(): AppConfig {
       channel: normalizeChannel(cfg.get<number>("minimax.channel") ?? 1),
       sampleRate: normalizePositiveInteger(cfg.get<unknown>("minimax.sampleRate"), DEFAULT_SAMPLE_RATE),
       bitrate: normalizePositiveInteger(cfg.get<unknown>("minimax.bitrate"), DEFAULT_BITRATE),
-      languageBoost: cfg.get<string>("minimax.languageBoost")?.trim() || "",
+      languageBoost: getTrimmedString(cfg, "minimax.languageBoost"),
       pronunciationDict: normalizeTagList(cfg.get<string[]>("minimax.pronunciationDict")),
     },
     mimo: {
       model: normalizeMiMoModel(cfg.get<string>("mimo.model")),
-      voice: cfg.get<string>("mimo.voice")?.trim() || MIMO_DEFAULT_VOICE,
+      voice: getTrimmedString(cfg, "mimo.voice") || MIMO_DEFAULT_VOICE,
       format: normalizeMiMoFormat(cfg.get<string>("mimo.format")),
-      baseUrl: cfg.get<string>("mimo.baseUrl")?.trim() || MIMO_DEFAULT_BASE_URL,
-      stylePrompt: cfg.get<string>("mimo.stylePrompt") ?? "",
+      baseUrl: getTrimmedString(cfg, "mimo.baseUrl") || MIMO_DEFAULT_BASE_URL,
+      stylePrompt: getString(cfg, "mimo.stylePrompt"),
       openingStyleTags: normalizeTagList(cfg.get<string[]>("mimo.openingStyleTags")),
       audioEventTags: normalizeTagList(cfg.get<string[]>("mimo.audioEventTags")),
       stylePresets: normalizePresetList(cfg.get<unknown[]>("mimo.stylePresets")),
     },
     gemini: {
       model: normalizeGeminiModel(cfg.get<string>("gemini.model")),
-      voice: cfg.get<string>("gemini.voice")?.trim() || GEMINI_DEFAULT_VOICE,
-      baseUrl: cfg.get<string>("gemini.baseUrl")?.trim() || GEMINI_DEFAULT_BASE_URL,
-      stylePreamble: cfg.get<string>("gemini.stylePreamble") ?? "",
+      voice: getTrimmedString(cfg, "gemini.voice") || GEMINI_DEFAULT_VOICE,
+      baseUrl: getTrimmedString(cfg, "gemini.baseUrl") || GEMINI_DEFAULT_BASE_URL,
+      stylePreamble: getString(cfg, "gemini.stylePreamble"),
     },
   };
 }
@@ -175,11 +173,6 @@ export async function setOpenAIInstructions(text: string): Promise<void> {
 export async function setOpenAISpeed(speed: number): Promise<void> {
   const cfg = vscode.workspace.getConfiguration(SECTION);
   await cfg.update("openai.speed", clampOpenAISpeed(speed), vscode.ConfigurationTarget.Global);
-}
-
-export async function setOpenAILanguage(language: string): Promise<void> {
-  const cfg = vscode.workspace.getConfiguration(SECTION);
-  await cfg.update("openai.language", language.trim(), vscode.ConfigurationTarget.Global);
 }
 
 export async function setMiniMaxSpeed(speed: number): Promise<void> {
@@ -297,6 +290,15 @@ export async function setProviderModel(provider: ProviderId, model: string): Pro
 
 function normalizeProvider(value: string | undefined): ProviderId {
   return isProviderId(value) ? value : "openai";
+}
+
+function getString(cfg: vscode.WorkspaceConfiguration, key: string): string {
+  const value = cfg.get<unknown>(key);
+  return typeof value === "string" ? value : "";
+}
+
+function getTrimmedString(cfg: vscode.WorkspaceConfiguration, key: string): string {
+  return getString(cfg, key).trim();
 }
 
 function normalizeOpenAIModel(value: string | undefined): OpenAITTSModel {

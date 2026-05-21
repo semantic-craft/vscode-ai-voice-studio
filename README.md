@@ -38,10 +38,10 @@ provider keeps its own voice / model selection and API key.
   preview the current voice, semantic-coloured status bar, state-aware
   Read/Pause/Resume button, keyboard-shortcut footer.
 - **Voice character card.** A single collapsible panel surfaces every
-  per-provider knob — OpenAI instructions, MiniMax region/speed/volume/
-  pitch/emotion/channel/language-boost/语气词/pause/pronunciation, MiMo
-  style prompt + chips + voice clone uploader + preset library, Gemini
-  style preamble + audio-tag chips.
+  per-provider knob — OpenAI format/speed/instructions, MiniMax
+  region/speed/volume/pitch/emotion/channel/language-boost/语气词/pause/
+  pronunciation, MiMo style prompt + chips + voice clone uploader + preset
+  library, Gemini style preamble + audio-tag chips.
 - **Voice clone** (MiMo). Upload an mp3/wav clip (≤10 MB after base64);
   the voice is cloned per request. Sample lives in `globalState`, never
   in `settings.json`.
@@ -95,6 +95,8 @@ provider keeps its own voice / model selection and API key.
 
 - Models: `gpt-4o-mini-tts` (default), `tts-1`, `tts-1-hd`.
 - Voices: `cedar`, `alloy`, `verse`, `marin`, plus the legacy `tts-1` set.
+- Output formats: `mp3`, `opus`, `aac`, `flac`, `wav`, `pcm`.
+- Server-side speed: `0.25`–`4.0` (`1.0` default).
 - Speaking **Instructions** (only on `gpt-4o-mini-tts`) are editable inline
   from the Voice character card.
 - Custom base URL via `aiVoiceStudio.openai.baseUrl` (any
@@ -176,7 +178,11 @@ provider keeps its own voice / model selection and API key.
 | `aiVoiceStudio.playbackRate` | `1` | 0.5–4.0; client-side, no re-synth |
 | `aiVoiceStudio.chunkSize` | `250` | Max chars per chunk (80–2000) |
 | `aiVoiceStudio.openai.model` | `gpt-4o-mini-tts` | |
+| `aiVoiceStudio.openai.voice` | `cedar` | |
+| `aiVoiceStudio.openai.format` | `mp3` | `mp3` \| `opus` \| `aac` \| `flac` \| `wav` \| `pcm` |
+| `aiVoiceStudio.openai.speed` | `1` | Server-side speed, 0.25–4.0 |
 | `aiVoiceStudio.openai.instructions` | `""` | Only on `gpt-4o-mini-tts` |
+| `aiVoiceStudio.openai.baseUrl` | OpenAI API | OpenAI-compatible endpoint |
 | `aiVoiceStudio.minimax.model` | `speech-2.8-hd` | 8 model variants |
 | `aiVoiceStudio.minimax.region` | `mainland` | |
 | `aiVoiceStudio.minimax.speed` | `1` | 0.5–2.0 |

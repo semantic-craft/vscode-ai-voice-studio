@@ -17,10 +17,7 @@ import {
   VOICE_DESIGN_TEMPLATE,
 } from "./core/mimo-voices";
 import { AUDIO_TAG_PRESETS as GEMINI_AUDIO_TAGS } from "./core/gemini-voices";
-import {
-  OPENAI_RESPONSE_FORMATS,
-  SPEED_MODELS as OPENAI_SPEED_MODELS,
-} from "./core/openai-voices";
+import { OPENAI_RESPONSE_FORMATS } from "./core/openai-voices";
 import {
   EMOTION_OPTIONS as MINIMAX_EMOTIONS,
   LANGUAGE_BOOST_PRESETS as MINIMAX_LANG_BOOST,
@@ -52,7 +49,6 @@ type IncomingMessage =
   | { type: "openaiInstructionsChanged"; text: string }
   | { type: "openaiFormatChanged"; format: string }
   | { type: "openaiSpeedChanged"; speed: number }
-  | { type: "openaiLanguageChanged"; text: string }
   | { type: "minimaxSpeedChanged"; speed: number }
   | { type: "minimaxRegionChanged"; region: "mainland" | "global" }
   | { type: "minimaxLanguageBoostChanged"; text: string }
@@ -73,6 +69,8 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
 
   private view?: vscode.WebviewView;
   private handler?: StudioMessageHandler;
+  private webviewReady = false;
+  private readyWaiters: Array<(ready: boolean) => void> = [];
 
   constructor(private readonly extensionUri: vscode.Uri) {}
 
@@ -81,7 +79,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
   }
 
   isReady(): boolean {
-    return this.view !== undefined;
+    return this.view !== undefined && this.webviewReady;
   }
 
   postPlay(
@@ -136,12 +134,27 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
     await vscode.commands.executeCommand("aiVoiceStudio.studio.focus");
   }
 
+  async waitUntilReady(timeoutMs = 3000): Promise<boolean> {
+    if (this.isReady()) return true;
+    return new Promise((resolve) => {
+      const complete = (ready: boolean): void => {
+        clearTimeout(timer);
+        const index = this.readyWaiters.indexOf(complete);
+        if (index >= 0) this.readyWaiters.splice(index, 1);
+        resolve(ready);
+      };
+      const timer = setTimeout(() => complete(this.isReady()), timeoutMs);
+      this.readyWaiters.push(complete);
+    });
+  }
+
   resolveWebviewView(
     webviewView: vscode.WebviewView,
     _context: vscode.WebviewViewResolveContext,
     _token: vscode.CancellationToken,
   ): void {
     this.view = webviewView;
+    this.webviewReady = false;
 
     webviewView.webview.options = {
       enableScripts: true,
@@ -156,6 +169,11 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         console.log("[aiVoiceStudio webview]", message.payload);
         return;
       }
+      if (message.type === "ready") {
+        this.markReady();
+        this.handler?.(message);
+        return;
+      }
       if (message.type === "rateChanged") {
         void setPlaybackRate(message.rate).catch((err) => {
           this.postStatus(err instanceof Error ? err.message : String(err), "error");
@@ -167,7 +185,19 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
 
     webviewView.onDidDispose(() => {
       this.view = undefined;
+      this.webviewReady = false;
+      this.flushReadyWaiters(false);
     });
+  }
+
+  private markReady(): void {
+    this.webviewReady = true;
+    this.flushReadyWaiters(true);
+  }
+
+  private flushReadyWaiters(ready: boolean): void {
+    const waiters = this.readyWaiters.splice(0);
+    for (const resolve of waiters) resolve(ready);
   }
 
   private getHtml(webview: vscode.Webview): string {
@@ -195,7 +225,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
     const minimaxSpeechTagsJson = JSON.stringify(MINIMAX_SPEECH_TAGS);
     const minimaxTagModelsJson = JSON.stringify(MINIMAX_TAG_MODELS);
     const openaiFormatsJson = JSON.stringify(OPENAI_RESPONSE_FORMATS);
-    const openaiSpeedModelsJson = JSON.stringify(OPENAI_SPEED_MODELS);
     const providerGlyphsJson = JSON.stringify({
       openai: "◐",
       minimax: "✦",
@@ -643,7 +672,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
           <label for="openaiFormat">Format</label>
           <select id="openaiFormat"></select>
         </div>
-        <div class="row hidden" id="openaiSpeedRow">
+        <div class="row" id="openaiSpeedRow">
           <label for="openaiSpeed">Speed</label>
           <input id="openaiSpeed" type="range" min="0.25" max="4" step="0.05" />
           <span class="rate-value" id="openaiSpeedValue"></span>
@@ -651,31 +680,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         <div class="row stack" id="openaiInstructionsRow">
           <label>Instructions</label>
           <textarea id="openaiInstructions" class="compact" placeholder="Speaking instructions (gpt-4o-mini-tts only). Example: 'Read naturally; preserve Chinese and English pronunciation.'"></textarea>
-        </div>
-        <div class="row">
-          <label for="openaiLanguage">Language</label>
-          <input id="openaiLanguage" type="text" placeholder="Auto-detect — or: zh, ja, fr, de, ko …" list="openaiLanguageList" />
-          <datalist id="openaiLanguageList">
-            <option value="zh">Chinese</option>
-            <option value="en">English</option>
-            <option value="ja">Japanese</option>
-            <option value="ko">Korean</option>
-            <option value="fr">French</option>
-            <option value="de">German</option>
-            <option value="es">Spanish</option>
-            <option value="pt">Portuguese</option>
-            <option value="ru">Russian</option>
-            <option value="ar">Arabic</option>
-            <option value="hi">Hindi</option>
-            <option value="it">Italian</option>
-            <option value="nl">Dutch</option>
-            <option value="pl">Polish</option>
-            <option value="th">Thai</option>
-            <option value="vi">Vietnamese</option>
-            <option value="uk">Ukrainian</option>
-            <option value="sv">Swedish</option>
-            <option value="tr">Turkish</option>
-          </datalist>
         </div>
       </div>
 
@@ -859,7 +863,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       const MINIMAX_SPEECH_TAGS = ${minimaxSpeechTagsJson};
       const MINIMAX_TAG_MODELS = ${minimaxTagModelsJson};
       const OPENAI_FORMATS = ${openaiFormatsJson};
-      const OPENAI_SPEED_MODELS = ${openaiSpeedModelsJson};
       const PROVIDER_GLYPHS = ${providerGlyphsJson};
       const TEST_PHRASE = "Hello, this is your selected voice.";
       const MAX_CLONE_BASE64 = 10 * 1024 * 1024;
@@ -871,6 +874,8 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       let chunksPlayed = 0;
       let playGeneration = 0;
       let pendingAction = null;
+      let pendingOpenAISpeed = false;
+      const pendingMiniMaxSliders = { speed: false, vol: false, pitch: false };
       const queue = [];
 
       const els = {
@@ -889,7 +894,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         openaiSpeedValue:   document.getElementById("openaiSpeedValue"),
         openaiInstructionsRow: document.getElementById("openaiInstructionsRow"),
         openaiInstructions: document.getElementById("openaiInstructions"),
-        openaiLanguage:     document.getElementById("openaiLanguage"),
         minimaxBlock:       document.getElementById("minimaxBlock"),
         minimaxRegion:      document.getElementById("minimaxRegion"),
         minimaxSpeed:       document.getElementById("minimaxSpeed"),
@@ -1199,9 +1203,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         if (isOpenAI()) {
           const os = state.openai || {};
           const model = os.model || "";
-          const showSpeed = OPENAI_SPEED_MODELS.indexOf(model) !== -1;
           const showInstr = model === "gpt-4o-mini-tts";
-          els.openaiSpeedRow.classList.toggle("hidden", !showSpeed);
           els.openaiInstructionsRow.classList.toggle("hidden", !showInstr);
           // Format select
           if (els.openaiFormat.options.length === 0) {
@@ -1222,9 +1224,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
           // Instructions
           const newInstr = os.instructions || "";
           if (els.openaiInstructions.value !== newInstr) els.openaiInstructions.value = newInstr;
-          // Language
-          const lang = os.language || "";
-          if (els.openaiLanguage.value !== lang) els.openaiLanguage.value = lang;
         }
         if (isMiniMax()) {
           const ms = state.minimax || {};
@@ -1598,6 +1597,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
 
       els.testVoiceBtn.addEventListener("click", () => {
         if (mode === "synth" || mode === "playing") return;
+        commitPendingProviderEdits();
         resetSession();
         setMode("synth");
         setStatus("Testing " + activeVoiceLabel() + "…", "info");
@@ -1615,9 +1615,11 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         if (!state.openai) state.openai = {};
         state.openai.speed = speed;
         els.openaiSpeedValue.textContent = speed.toFixed(2) + "×";
+        pendingOpenAISpeed = true;
       });
       els.openaiSpeed.addEventListener("change", () => {
         const speed = parseFloat(els.openaiSpeed.value);
+        pendingOpenAISpeed = false;
         vscode.postMessage({ type: "openaiSpeedChanged", speed: speed });
       });
       function commitOpenAIInstructions() {
@@ -1629,15 +1631,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       }
       els.openaiInstructions.addEventListener("change", commitOpenAIInstructions);
       els.openaiInstructions.addEventListener("blur", commitOpenAIInstructions);
-      function commitOpenAILanguage() {
-        const text = els.openaiLanguage.value;
-        if (!state.openai) state.openai = {};
-        if (state.openai.language === text) return;
-        state.openai.language = text;
-        vscode.postMessage({ type: "openaiLanguageChanged", text: text });
-      }
-      els.openaiLanguage.addEventListener("change", commitOpenAILanguage);
-      els.openaiLanguage.addEventListener("blur", commitOpenAILanguage);
 
       // ---- MiniMax inline controls ----
       els.minimaxRegion.addEventListener("change", () => {
@@ -1651,6 +1644,13 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         if (!state.minimax) state.minimax = {};
         state.minimax.speed = speed;
         els.minimaxSpeedValue.textContent = speed.toFixed(2) + "×";
+        pendingMiniMaxSliders.speed = true;
+      });
+      els.minimaxSpeed.addEventListener("change", () => {
+        const speed = parseFloat(els.minimaxSpeed.value);
+        if (!state.minimax) state.minimax = {};
+        state.minimax.speed = speed;
+        pendingMiniMaxSliders.speed = false;
         vscode.postMessage({ type: "minimaxSpeedChanged", speed: speed });
       });
       function commitMiniMaxLangBoost() {
@@ -1668,6 +1668,13 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         if (!state.minimax) state.minimax = {};
         state.minimax.vol = vol;
         els.minimaxVolValue.textContent = vol.toFixed(1);
+        pendingMiniMaxSliders.vol = true;
+      });
+      els.minimaxVol.addEventListener("change", () => {
+        const vol = parseFloat(els.minimaxVol.value);
+        if (!state.minimax) state.minimax = {};
+        state.minimax.vol = vol;
+        pendingMiniMaxSliders.vol = false;
         vscode.postMessage({ type: "minimaxVolChanged", vol: vol });
       });
       els.minimaxPitch.addEventListener("input", () => {
@@ -1675,6 +1682,13 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         if (!state.minimax) state.minimax = {};
         state.minimax.pitch = pitch;
         els.minimaxPitchValue.textContent = (pitch > 0 ? "+" : "") + pitch;
+        pendingMiniMaxSliders.pitch = true;
+      });
+      els.minimaxPitch.addEventListener("change", () => {
+        const pitch = parseInt(els.minimaxPitch.value, 10) || 0;
+        if (!state.minimax) state.minimax = {};
+        state.minimax.pitch = pitch;
+        pendingMiniMaxSliders.pitch = false;
         vscode.postMessage({ type: "minimaxPitchChanged", pitch: pitch });
       });
       els.minimaxEmotion.addEventListener("change", () => {
@@ -1823,6 +1837,65 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       els.geminiPreamble.addEventListener("change", commitGeminiPreamble);
       els.geminiPreamble.addEventListener("blur", commitGeminiPreamble);
 
+      function commitOpenAISpeed() {
+        if (!pendingOpenAISpeed) return;
+        const speed = parseFloat(els.openaiSpeed.value);
+        if (!state.openai) state.openai = {};
+        state.openai.speed = speed;
+        pendingOpenAISpeed = false;
+        vscode.postMessage({ type: "openaiSpeedChanged", speed: speed });
+      }
+
+      function commitMiniMaxSliderValues() {
+        if (!state.minimax) state.minimax = {};
+        if (pendingMiniMaxSliders.speed) {
+          const speed = parseFloat(els.minimaxSpeed.value);
+          state.minimax.speed = speed;
+          pendingMiniMaxSliders.speed = false;
+          vscode.postMessage({ type: "minimaxSpeedChanged", speed: speed });
+        }
+        if (pendingMiniMaxSliders.vol) {
+          const vol = parseFloat(els.minimaxVol.value);
+          state.minimax.vol = vol;
+          pendingMiniMaxSliders.vol = false;
+          vscode.postMessage({ type: "minimaxVolChanged", vol: vol });
+        }
+        if (pendingMiniMaxSliders.pitch) {
+          const pitch = parseInt(els.minimaxPitch.value, 10) || 0;
+          state.minimax.pitch = pitch;
+          pendingMiniMaxSliders.pitch = false;
+          vscode.postMessage({ type: "minimaxPitchChanged", pitch: pitch });
+        }
+      }
+
+      function commitPendingProviderEdits() {
+        if (isOpenAI()) {
+          commitOpenAISpeed();
+          commitOpenAIInstructions();
+        }
+        if (isMiniMax()) {
+          commitMiniMaxSliderValues();
+          commitMiniMaxLangBoost();
+          commitMiniMaxPronunciation();
+        }
+        if (isMimo()) {
+          const promptText = els.stylePrompt.value;
+          if ((state.mimo && state.mimo.stylePrompt) !== promptText) {
+            if (!state.mimo) state.mimo = {};
+            state.mimo.stylePrompt = promptText;
+            vscode.postMessage({ type: "mimoStylePromptChanged", text: promptText });
+          }
+        }
+        if (isGemini()) {
+          const preambleText = els.geminiPreamble.value;
+          if ((state.gemini && state.gemini.stylePreamble) !== preambleText) {
+            if (!state.gemini) state.gemini = {};
+            state.gemini.stylePreamble = preambleText;
+            vscode.postMessage({ type: "geminiStylePreambleChanged", text: preambleText });
+          }
+        }
+      }
+
       // ---- speed / play / stop ----
       els.rate.addEventListener("input", () => {
         const rate = parseFloat(els.rate.value);
@@ -1854,28 +1927,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
           setStatus("Type or paste text first.", "warn");
           return;
         }
-        // Persist any pending OpenAI edits before sending.
-        if (isOpenAI()) {
-          commitOpenAIInstructions();
-          commitOpenAILanguage();
-        }
-        // Persist any pending stylePrompt edit before sending.
-        if (isMimo()) {
-          const promptText = els.stylePrompt.value;
-          if ((state.mimo && state.mimo.stylePrompt) !== promptText) {
-            if (!state.mimo) state.mimo = {};
-            state.mimo.stylePrompt = promptText;
-            vscode.postMessage({ type: "mimoStylePromptChanged", text: promptText });
-          }
-        }
-        if (isGemini()) {
-          const preambleText = els.geminiPreamble.value;
-          if ((state.gemini && state.gemini.stylePreamble) !== preambleText) {
-            if (!state.gemini) state.gemini = {};
-            state.gemini.stylePreamble = preambleText;
-            vscode.postMessage({ type: "geminiStylePreambleChanged", text: preambleText });
-          }
-        }
+        commitPendingProviderEdits();
         resetSession();
         setMode("synth");
         setStatus("Synthesizing…", "info");
@@ -2004,7 +2056,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
 interface SerializedConfig {
   provider: ProviderId;
   playbackRate: number;
-  openai: { model: string; voice: string; format: string; instructions: string; speed: number; language: string };
+  openai: { model: string; voice: string; format: string; instructions: string; speed: number };
   minimax: {
     model: string;
     voice: string;
@@ -2046,7 +2098,6 @@ function serializeConfig(cfg: AppConfig, cloneSample?: MiMoVoiceCloneSampleRecor
       format: cfg.openai.format,
       instructions: cfg.openai.instructions,
       speed: cfg.openai.speed,
-      language: cfg.openai.language,
     },
     minimax: {
       model: cfg.minimax.model,

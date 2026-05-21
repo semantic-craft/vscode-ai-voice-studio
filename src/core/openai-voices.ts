@@ -41,12 +41,6 @@ export const OPENAI_RESPONSE_FORMATS: { id: OpenAIResponseFormat; label: string 
   { id: "pcm", label: "PCM — raw 24 kHz 16-bit" },
 ];
 
-export const SPEED_MODELS: OpenAITTSModel[] = ["tts-1", "tts-1-hd"];
-
-export function supportsSpeed(model: OpenAITTSModel): boolean {
-  return SPEED_MODELS.includes(model);
-}
-
 export function supportsInstructions(model: OpenAITTSModel): boolean {
   return model === "gpt-4o-mini-tts";
 }

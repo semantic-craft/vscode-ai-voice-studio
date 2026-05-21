@@ -18,7 +18,6 @@ import {
   setMiniMaxVol,
   setOpenAIFormat,
   setOpenAIInstructions,
-  setOpenAILanguage,
   setOpenAISpeed,
   setProvider,
   setProviderModel,
@@ -132,6 +131,18 @@ export function activate(context: vscode.ExtensionContext): void {
     if (!provider.isReady()) return;
     provider.postConfig(getConfig(), getMiMoVoiceCloneSample(context.globalState));
   };
+  let configUpdateChain: Promise<void> = Promise.resolve();
+  const queueConfigUpdate = (update: () => Promise<void>, shouldRefresh = false): void => {
+    configUpdateChain = configUpdateChain
+      .then(update)
+      .then(() => {
+        if (shouldRefresh) refreshConfig();
+      })
+      .catch((err) => {
+        statusBar.set({ kind: "error" });
+        handleError(err, provider);
+      });
+  };
 
   provider.setMessageHandler((msg) => {
     switch (msg.type) {
@@ -149,85 +160,86 @@ export function activate(context: vscode.ExtensionContext): void {
         void vscode.commands.executeCommand("aiVoiceStudio.setApiKey");
         return;
       case "providerChanged":
-        void setProvider(msg.provider).then(refreshConfig);
+        queueConfigUpdate(() => setProvider(msg.provider), true);
         return;
       case "voiceChanged":
-        void setProviderVoice(msg.provider, msg.voice);
+        queueConfigUpdate(() => setProviderVoice(msg.provider, msg.voice));
         return;
       case "modelChanged":
-        void applyModelChange(msg.provider, msg.model, msg.voice).then(refreshConfig);
+        queueConfigUpdate(() => applyModelChange(msg.provider, msg.model, msg.voice), true);
         return;
       case "mimoStyleTagsChanged":
-        void setMiMoOpeningStyleTags(msg.tags);
+        queueConfigUpdate(() => setMiMoOpeningStyleTags(msg.tags));
         return;
       case "mimoAudioEventTagsChanged":
-        void setMiMoAudioEventTags(msg.tags);
+        queueConfigUpdate(() => setMiMoAudioEventTags(msg.tags));
         return;
       case "mimoStylePromptChanged":
-        void setMiMoStylePrompt(msg.text);
+        queueConfigUpdate(() => setMiMoStylePrompt(msg.text));
         return;
       case "mimoVoiceCloneSampleSet":
-        void setMiMoVoiceCloneSample(context.globalState, {
-          dataUrl: msg.dataUrl,
-          mime: msg.mime,
-          fileName: msg.fileName,
-          sizeBytes: msg.sizeBytes,
-          storedAt: Date.now(),
-        }).then(refreshConfig);
+        queueConfigUpdate(
+          () =>
+            setMiMoVoiceCloneSample(context.globalState, {
+              dataUrl: msg.dataUrl,
+              mime: msg.mime,
+              fileName: msg.fileName,
+              sizeBytes: msg.sizeBytes,
+              storedAt: Date.now(),
+            }),
+          true,
+        );
         return;
       case "mimoVoiceCloneSampleClear":
-        void setMiMoVoiceCloneSample(context.globalState, undefined).then(refreshConfig);
+        queueConfigUpdate(() => setMiMoVoiceCloneSample(context.globalState, undefined), true);
         return;
       case "mimoPresetSave":
-        void applyPresetSave(msg.preset).then(refreshConfig);
+        queueConfigUpdate(() => applyPresetSave(msg.preset), true);
         return;
       case "mimoPresetApply":
-        void applyPresetByName(msg.name).then(refreshConfig);
+        queueConfigUpdate(() => applyPresetByName(msg.name), true);
         return;
       case "mimoPresetDelete":
-        void applyPresetDelete(msg.name).then(refreshConfig);
+        queueConfigUpdate(() => applyPresetDelete(msg.name), true);
         return;
       case "geminiStylePreambleChanged":
-        void setGeminiStylePreamble(msg.text);
+        queueConfigUpdate(() => setGeminiStylePreamble(msg.text));
         return;
       case "geminiInsertAudioTag":
         // Pure UI signal — handled inside the webview, no extension state change.
         return;
       case "openaiInstructionsChanged":
-        void setOpenAIInstructions(msg.text);
+        queueConfigUpdate(() => setOpenAIInstructions(msg.text));
         return;
       case "openaiFormatChanged":
-        void setOpenAIFormat(msg.format);
+        queueConfigUpdate(() => setOpenAIFormat(msg.format));
         return;
       case "openaiSpeedChanged":
-        void setOpenAISpeed(msg.speed);
-        return;
-      case "openaiLanguageChanged":
-        void setOpenAILanguage(msg.text);
+        queueConfigUpdate(() => setOpenAISpeed(msg.speed));
         return;
       case "minimaxSpeedChanged":
-        void setMiniMaxSpeed(msg.speed);
+        queueConfigUpdate(() => setMiniMaxSpeed(msg.speed));
         return;
       case "minimaxRegionChanged":
-        void setMiniMaxRegion(msg.region);
+        queueConfigUpdate(() => setMiniMaxRegion(msg.region));
         return;
       case "minimaxLanguageBoostChanged":
-        void setMiniMaxLanguageBoost(msg.text);
+        queueConfigUpdate(() => setMiniMaxLanguageBoost(msg.text));
         return;
       case "minimaxVolChanged":
-        void setMiniMaxVol(msg.vol);
+        queueConfigUpdate(() => setMiniMaxVol(msg.vol));
         return;
       case "minimaxPitchChanged":
-        void setMiniMaxPitch(msg.pitch);
+        queueConfigUpdate(() => setMiniMaxPitch(msg.pitch));
         return;
       case "minimaxEmotionChanged":
-        void setMiniMaxEmotion(msg.emotion);
+        queueConfigUpdate(() => setMiniMaxEmotion(msg.emotion));
         return;
       case "minimaxChannelChanged":
-        void setMiniMaxChannel(msg.channel);
+        queueConfigUpdate(() => setMiniMaxChannel(msg.channel));
         return;
       case "minimaxPronunciationDictChanged":
-        void setMiniMaxPronunciationDict(msg.entries);
+        queueConfigUpdate(() => setMiniMaxPronunciationDict(msg.entries));
         return;
       case "minimaxInsertSpeechTag":
         // Pure UI signal — handled inside the webview, no extension state change.
@@ -246,6 +258,7 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.window.showWarningMessage("AI Voice Studio: nothing to read.");
         return;
       }
+      await configUpdateChain;
 
       const cfg = getConfig();
       const apiKey = await secrets.ensure(cfg.provider);
@@ -268,6 +281,13 @@ export function activate(context: vscode.ExtensionContext): void {
 
       const voiceLabel = describeVoice(cfg);
       await provider.reveal();
+      if (!(await provider.waitUntilReady())) {
+        const message = "AI Voice Studio: sidebar is still loading. Try again in a moment.";
+        provider.postStatus(message, "warn");
+        void vscode.window.showWarningMessage(message);
+        statusBar.set({ kind: "idle" });
+        return;
+      }
 
       const chunks = chunkText(trimmed, { maxChars: cfg.chunkSize });
       if (chunks.length === 0) return;
@@ -415,7 +435,6 @@ function buildProviderArgs(
         format: cfg.openai.format,
         instructions: cfg.openai.instructions,
         speed: cfg.openai.speed !== 1 ? cfg.openai.speed : undefined,
-        language: cfg.openai.language || undefined,
       };
     }
     case "minimax": {

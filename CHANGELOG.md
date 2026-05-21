@@ -4,6 +4,17 @@ All notable changes to **AI Voice Studio** are documented here. The format is
 loosely [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the
 project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.6.1] — 2026-05-22
+
+### Fixed
+- Normalized synthesized text chunks so mixed Chinese / English input no
+  longer produces chunks with leading whitespace while still preserving
+  necessary English word spacing.
+
+### Added
+- Added runtime regression coverage for extension activation, lazy webview
+  registration, playback prefetch cancellation, and text chunking boundaries.
+
 ## [0.6.0] — 2026-05-22
 
 ### Added

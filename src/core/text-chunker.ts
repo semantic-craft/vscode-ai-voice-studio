@@ -85,14 +85,25 @@ function splitOversized(sentence: string, maxChars: number): string[] {
 }
 
 function pushOrMerge(chunks: string[], piece: string, options: ChunkerOptions): void {
+  const normalized = piece.replace(/\s+/g, " ").trim();
+  if (!normalized) return;
+
   const last = chunks[chunks.length - 1];
   if (
     last !== undefined &&
-    piece.length < options.minChars &&
-    last.length + piece.length <= options.maxChars
+    normalized.length < options.minChars &&
+    last.length + separatorBetween(last, normalized).length + normalized.length <= options.maxChars
   ) {
-    chunks[chunks.length - 1] = last + piece;
+    chunks[chunks.length - 1] = last + separatorBetween(last, normalized) + normalized;
     return;
   }
-  chunks.push(piece);
+  chunks.push(normalized);
+}
+
+function separatorBetween(left: string, right: string): string {
+  if (!left || !right || /\s$/.test(left) || /^\s/.test(right)) return "";
+  if (/[A-Za-z0-9.!?;:)"'\]]$/.test(left) && /^[A-Za-z0-9("'[]/.test(right)) {
+    return " ";
+  }
+  return "";
 }

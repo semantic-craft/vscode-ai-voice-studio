@@ -89,7 +89,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
     await vscode.commands.executeCommand("aiVoiceStudio.studio.focus");
   }
 
-  async waitUntilReady(timeoutMs = 3000): Promise<boolean> {
+  async waitUntilReady(timeoutMs = 5000): Promise<boolean> {
     if (this.isReady()) return true;
     return new Promise((resolve) => {
       const complete = (ready: boolean): void => {
@@ -354,7 +354,16 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       const vscode = acquireVsCodeApi();
       const CATALOG = ${catalogJson};
       const LANGUAGE_TYPES = ${languageTypesJson};
-      const TEST_PHRASE = "Hello, this is your selected Qwen-TTS voice.";
+      const TEST_PHRASES = {
+        Chinese: "你好，这是您选择的 Qwen 语音。",
+        English: "Hello, this is your selected Qwen voice.",
+        German: "Hallo, dies ist Ihre ausgewählte Qwen-Stimme.",
+        Auto: "Hello, this is your selected Qwen voice.",
+      };
+      function pickTestPhrase() {
+        const lang = (qwen().languageType || "Auto");
+        return TEST_PHRASES[lang] || TEST_PHRASES.Auto;
+      }
 
       let state = ${initialConfigJson};
       let mode = "idle";
@@ -463,12 +472,14 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         els.endpoint.value = qwen().endpoint || "china";
         const showInstructions = qwen().model === "qwen3-tts-instruct-flash";
         els.instructionsRow.classList.toggle("hidden", !showInstructions);
-        if (els.instructions.value !== (qwen().instructions || "")) {
+        const instructionsFocused = document.activeElement === els.instructions;
+        if (!instructionsFocused && els.instructions.value !== (qwen().instructions || "")) {
           els.instructions.value = qwen().instructions || "";
         }
         const rate = Number.isFinite(state.playbackRate) ? state.playbackRate : 1;
         els.rate.value = String(rate);
         els.rateValue.textContent = rate.toFixed(2) + "x";
+        els.player.playbackRate = rate;
       }
       function setStatus(message, tone, action) {
         els.statusText.textContent = message;
@@ -682,7 +693,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         resetSession();
         setMode("synth");
         setStatus("Testing voice...", "info");
-        vscode.postMessage({ type: "requestRead", text: TEST_PHRASE });
+        vscode.postMessage({ type: "requestRead", text: pickTestPhrase() });
       });
       els.stop.addEventListener("click", function () {
         resetSession();

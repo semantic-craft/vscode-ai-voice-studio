@@ -100,6 +100,50 @@ test("Qwen-TTS data response trusts explicit audio format over sniffing", async 
   }
 });
 
+test("Qwen-TTS sniff distinguishes AAC ADTS from MP3 sync frames", async () => {
+  const aacFrame = Buffer.from([0xff, 0xf1, 0x50, 0x80, 0x00, 0x1f, 0xfc]);
+  const restore = mockFetch(async () =>
+    jsonResponse({ output: { audio: { data: aacFrame.toString("base64") } } }),
+  );
+
+  try {
+    const result = await synthesizeQwen({
+      text: "hi",
+      apiKey: "sk-test",
+      endpoint: "china",
+      model: "qwen3-tts-flash",
+      voice: "Cherry",
+      languageType: "English",
+    });
+
+    assert.equal(result.format, "aac");
+  } finally {
+    restore();
+  }
+});
+
+test("Qwen-TTS sniff still reports MP3 for non-zero layer sync bytes", async () => {
+  const mp3Frame = Buffer.from([0xff, 0xfb, 0x90, 0x00]);
+  const restore = mockFetch(async () =>
+    jsonResponse({ output: { audio: { data: mp3Frame.toString("base64") } } }),
+  );
+
+  try {
+    const result = await synthesizeQwen({
+      text: "hi",
+      apiKey: "sk-test",
+      endpoint: "china",
+      model: "qwen3-tts-flash",
+      voice: "Cherry",
+      languageType: "English",
+    });
+
+    assert.equal(result.format, "mp3");
+  } finally {
+    restore();
+  }
+});
+
 test("Qwen-TTS instruct model sends instructions and downloads URL audio", async () => {
   const calls = [];
   const restore = mockFetch(async (url, init) => {

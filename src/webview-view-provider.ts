@@ -90,6 +90,35 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
     });
   }
 
+  postSubChunk(
+    sessionId: number,
+    audioBase64: string,
+    format: string,
+    playbackRate: number,
+    isLast: boolean,
+    label?: string,
+  ): void {
+    this.view?.webview.postMessage({
+      type: "playSubChunk",
+      sessionId,
+      audioBase64,
+      format,
+      playbackRate,
+      isLast,
+      label,
+    });
+  }
+
+  postChunkBoundary(sessionId: number, chunkIndex: number, totalChunks: number, label: string): void {
+    this.view?.webview.postMessage({
+      type: "chunkBoundary",
+      sessionId,
+      chunkIndex,
+      totalChunks,
+      label,
+    });
+  }
+
   postSessionStart(sessionId: number, totalChunks: number): void {
     this.view?.webview.postMessage({ type: "sessionStart", sessionId, totalChunks });
   }
@@ -815,6 +844,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       let activeSession = null;
       let sessionDone = false;
       let chunksPlayed = 0;
+      let currentlyPlaying = null;
       let playGeneration = 0;
       let pendingAction = null;
       let pendingOpenAISpeed = false;
@@ -928,6 +958,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         activeSession = null;
         sessionDone = false;
         chunksPlayed = 0;
+        currentlyPlaying = null;
         setProgress(0, 0);
         els.player.pause();
         els.player.removeAttribute("src");
@@ -1742,6 +1773,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         }
         if (!activeSession) return;
         const next = queue.shift();
+        currentlyPlaying = next;
         const sessionId = activeSession.id;
         const generation = playGeneration;
         const playFormat = next.format === "pcm" ? "wav" : next.format;
@@ -1759,8 +1791,19 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       }
 
       els.player.addEventListener("ended", () => {
-        chunksPlayed += 1;
-        if (activeSession) setProgress(chunksPlayed, activeSession.total);
+        const finished = currentlyPlaying;
+        currentlyPlaying = null;
+        if (activeSession) {
+          if (finished && finished.isSubChunk) {
+            if (finished.isLast) {
+              chunksPlayed += 1;
+              setProgress(chunksPlayed, activeSession.total);
+            }
+          } else {
+            chunksPlayed += 1;
+            setProgress(chunksPlayed, activeSession.total);
+          }
+        }
         startNextChunk();
       });
       els.player.addEventListener("error", () => {
@@ -1787,6 +1830,26 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
             if (els.player.paused && mode !== "paused") {
               startNextChunk();
             }
+            break;
+          case "playSubChunk":
+            if (!activeSession || msg.sessionId !== activeSession.id) break;
+            queue.push({
+              ...msg,
+              isSubChunk: true,
+              chunkIndex: msg.isLast ? -1 : -2, // sentinel: trailing sub-chunk advances progress
+              totalChunks: activeSession.total,
+            });
+            if (els.player.paused && mode !== "paused") {
+              startNextChunk();
+            }
+            break;
+          case "chunkBoundary":
+            // Streaming has finished pushing PCM segments for a chunk. The
+            // trailing sub-chunk already has isLast=true, so progress will
+            // advance when that segment finishes playing. Nothing to do here
+            // beyond keeping the status label fresh.
+            if (!activeSession || msg.sessionId !== activeSession.id) break;
+            setStatus("Playing — " + msg.label, "info");
             break;
           case "sessionEnd":
             if (!activeSession || msg.sessionId !== activeSession.id) break;

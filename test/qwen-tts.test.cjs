@@ -100,6 +100,52 @@ test("Qwen-TTS data response trusts explicit audio format over sniffing", async 
   }
 });
 
+test("Qwen-TTS SSE streaming forwards each PCM segment and marks the last one", async () => {
+  const seg1 = Buffer.from([1, 2, 3]).toString("base64");
+  const seg2 = Buffer.from([4, 5, 6]).toString("base64");
+  const seg3 = Buffer.from([7, 8, 9]).toString("base64");
+  const body = [
+    `data: ${JSON.stringify({ output: { audio: { data: seg1 } } })}\n\n`,
+    `data: ${JSON.stringify({ output: { audio: { data: seg2 } } })}\n\n`,
+    `data: ${JSON.stringify({ output: { audio: { data: seg3 }, finish_reason: "stop" } })}\n\n`,
+  ].join("");
+
+  let capturedHeader;
+  const restore = mockFetch(async (_url, init) => {
+    capturedHeader = init.headers["X-DashScope-SSE"];
+    return new Response(body, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    });
+  });
+
+  const calls = [];
+  try {
+    const result = await synthesizeQwen({
+      text: "hello world",
+      apiKey: "sk-test",
+      endpoint: "china",
+      model: "qwen3-tts-flash",
+      voice: "Cherry",
+      languageType: "English",
+      onSubChunk: (audioBase64, isLast) => {
+        calls.push({ audioBase64, isLast });
+      },
+    });
+
+    assert.equal(capturedHeader, "enable");
+    assert.deepEqual(
+      calls.map((c) => c.audioBase64),
+      [seg1, seg2, seg3],
+    );
+    assert.deepEqual(calls.map((c) => c.isLast), [false, false, true]);
+    assert.equal(result.audioBase64, "");
+    assert.equal(result.format, "wav");
+  } finally {
+    restore();
+  }
+});
+
 test("Qwen-TTS sniff distinguishes AAC ADTS from MP3 sync frames", async () => {
   const aacFrame = Buffer.from([0xff, 0xf1, 0x50, 0x80, 0x00, 0x1f, 0xfc]);
   const restore = mockFetch(async () =>

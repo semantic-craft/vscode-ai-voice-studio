@@ -278,16 +278,53 @@ export function activate(context: vscode.ExtensionContext): void {
           : `Synthesizing ${chunks.length} chunks with ${PROVIDER_LABELS[cfg.provider]} · ${voiceLabel}…`,
       );
 
+      const isQwenStreaming = args.provider === "qwen";
+      let streamingChunkIndex = 0;
       const result = await runPlaybackSession(
         chunks,
-        (chunkText, chunkSignal) => synthesize({ text: chunkText, signal: chunkSignal }, args),
+        (chunkText, chunkSignal) => {
+          if (isQwenStreaming && args.provider === "qwen") {
+            // Stream sub-chunks straight to the webview as PCM segments arrive.
+            const total = chunks.length;
+            const myIndex = streamingChunkIndex++;
+            const label =
+              total > 1
+                ? `${source} · ${voiceLabel} · ${myIndex + 1}/${total}`
+                : `${source} · ${voiceLabel}`;
+            return synthesize(
+              { text: chunkText, signal: chunkSignal },
+              {
+                ...args,
+                onSubChunk: (audioBase64, isLast) => {
+                  if (!playback.isCurrent(currentSessionId)) return;
+                  provider.postSubChunk(
+                    currentSessionId,
+                    audioBase64,
+                    "pcm",
+                    cfg.playbackRate,
+                    isLast,
+                    label,
+                  );
+                },
+              },
+            );
+          }
+          return synthesize({ text: chunkText, signal: chunkSignal }, args);
+        },
         ({ index, total, result: out }) => {
           if (!playback.isCurrent(currentSessionId)) return;
           const label =
             total > 1
               ? `${source} · ${voiceLabel} · ${index + 1}/${total}`
               : `${source} · ${voiceLabel}`;
-          provider.postPlay(currentSessionId, index, total, out.audioBase64, out.format, cfg.playbackRate, label);
+          if (isQwenStreaming) {
+            // Streaming already pushed audio to the webview via postSubChunk;
+            // here we only mark the chunk boundary so the progress bar advances
+            // when the trailing sub-chunk has been queued.
+            provider.postChunkBoundary(currentSessionId, index, total, label);
+          } else {
+            provider.postPlay(currentSessionId, index, total, out.audioBase64, out.format, cfg.playbackRate, label);
+          }
           statusBar.set({ kind: "playing", index: index + 1, total });
         },
         signal,

@@ -42,7 +42,10 @@ function withMockedVscode(handlers, run) {
         captured.inputBoxOptions = options;
         return inputBoxResponse;
       },
-      async showQuickPick() {},
+      async showQuickPick(items) {
+        const list = await items;
+        return list.find((item) => item.id === "qwen") ?? list[0];
+      },
     },
     workspace: {
       getConfiguration() {

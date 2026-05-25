@@ -1,3 +1,14 @@
+export type ProviderId = "openai" | "mimo" | "gemini" | "qwen";
+
+export const PROVIDER_IDS: ProviderId[] = ["openai", "mimo", "gemini", "qwen"];
+
+export const PROVIDER_LABELS: Record<ProviderId, string> = {
+  openai: "OpenAI",
+  mimo: "MiMo",
+  gemini: "Gemini",
+  qwen: "Qwen",
+};
+
 export class TTSApiError extends Error {
   constructor(
     message: string,
@@ -33,9 +44,9 @@ export interface ModelInfo {
   description?: string;
 }
 
-export interface VoiceCatalog {
-  id: "qwen";
-  label: "Qwen-TTS";
+export interface ProviderCatalog {
+  id: ProviderId;
+  label: string;
   models: ModelInfo[];
   voices: VoiceConfig[];
   defaults: {
@@ -45,7 +56,11 @@ export interface VoiceCatalog {
   };
 }
 
-export function getVoiceById(catalog: VoiceCatalog, id: string): VoiceConfig | undefined {
+export function isProviderId(value: unknown): value is ProviderId {
+  return value === "openai" || value === "mimo" || value === "gemini" || value === "qwen";
+}
+
+export function getVoiceById(catalog: ProviderCatalog, id: string): VoiceConfig | undefined {
   return catalog.voices.find((v) => v.id === id);
 }
 
@@ -53,6 +68,6 @@ export function isVoiceAvailableForModel(voice: VoiceConfig, model: string): boo
   return voice.models.length === 0 || voice.models.includes(model);
 }
 
-export function getVoicesForModel(catalog: VoiceCatalog, model: string): VoiceConfig[] {
+export function getVoicesForModel(catalog: ProviderCatalog, model: string): VoiceConfig[] {
   return catalog.voices.filter((v) => isVoiceAvailableForModel(v, model));
 }

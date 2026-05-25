@@ -1,4 +1,4 @@
-import type { VoiceCatalog, VoiceConfig } from "./types";
+import type { ProviderCatalog, VoiceConfig } from "./providers";
 
 export type QwenTTSModel = "qwen3-tts-flash" | "qwen3-tts-instruct-flash";
 export type QwenEndpoint = "china" | "international";
@@ -95,9 +95,9 @@ export const VOICES: VoiceConfig[] = [
   },
 ];
 
-export const QWEN_CATALOG: VoiceCatalog = {
+export const QWEN_CATALOG: ProviderCatalog = {
   id: "qwen",
-  label: "Qwen-TTS",
+  label: "Qwen",
   models: ALL_MODELS.map((id) => ({ id, label: MODEL_LABELS[id], description: MODEL_DESCRIPTIONS[id] })),
   voices: VOICES,
   defaults: {

@@ -133,7 +133,7 @@ test("extension activates lazily registered commands and webview provider", asyn
 
     assert.equal(ctx.statusItems.length, 1);
     assert.equal(ctx.statusItems[0].command, "aiVoiceStudio.focusView");
-    assert.equal(ctx.statusItems[0].text, "$(unmute) Qwen TTS");
+    assert.equal(ctx.statusItems[0].text, "$(unmute) Voice Studio");
     assert.equal(ctx.statusItems[0].showCalled, true);
 
     assert.deepEqual([...ctx.commands.keys()].sort(), [

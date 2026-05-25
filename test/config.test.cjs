@@ -62,15 +62,18 @@ test("getConfig tolerates dirty Qwen settings without throwing", () => {
 
 test("Qwen setters normalize settings before writing", async () => {
   const settings = {};
-  await withMockedVscode(settings, async ({ setQwenEndpoint, setQwenLanguageType, setQwenModel, setQwenVoice }) => {
-    await setQwenModel("bad");
-    await setQwenVoice("  Serena  ");
-    await setQwenEndpoint("bad");
-    await setQwenLanguageType("German");
+  await withMockedVscode(
+    settings,
+    async ({ setQwenEndpoint, setQwenLanguageType, setProviderModel, setProviderVoice }) => {
+      await setProviderModel("qwen", "qwen3-tts-flash");
+      await setProviderVoice("qwen", "Serena");
+      await setQwenEndpoint("bad");
+      await setQwenLanguageType("German");
 
-    assert.equal(settings["qwen.model"], "qwen3-tts-flash");
-    assert.equal(settings["qwen.voice"], "Serena");
-    assert.equal(settings["qwen.endpoint"], "china");
-    assert.equal(settings["qwen.languageType"], "German");
-  });
+      assert.equal(settings["qwen.model"], "qwen3-tts-flash");
+      assert.equal(settings["qwen.voice"], "Serena");
+      assert.equal(settings["qwen.endpoint"], "china");
+      assert.equal(settings["qwen.languageType"], "German");
+    },
+  );
 });

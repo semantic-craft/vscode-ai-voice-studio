@@ -1,31 +1,28 @@
-# Qwen TTS Studio
+# AI Voice Studio
 
-Read text aloud inside VS Code with Alibaba Cloud **Qwen-TTS** through
-DashScope / Model Studio. The extension is a focused Qwen-TTS sidebar: choose
-model, voice, endpoint, language, optional instruct-model style instructions,
-and playback speed.
+Read text aloud inside VS Code with multiple TTS providers — **OpenAI**, **MiMo** (小米), **Google Gemini**, and **Alibaba Qwen** — switchable from a single sidebar.
 
 ## Features
 
-- Qwen-TTS non-streaming HTTP synthesis via DashScope.
-- Default model: `qwen3-tts-flash`.
-- Optional style-instruction model: `qwen3-tts-instruct-flash`.
-- `instructions` is sent only with `qwen3-tts-instruct-flash`.
-- Language control through Qwen's `language_type`: `Auto`, `Chinese`,
-  `English`, and `German`.
-- China and international DashScope endpoints.
+- Provider switcher at the top of the sidebar: OpenAI, MiMo, Gemini, Qwen.
+- Per-provider model and voice catalogs, with category grouping.
+- Per-provider parameter blocks:
+  - **OpenAI** — model, voice, format (mp3 / wav / opus / aac / flac / pcm), instructions, server-side speed, custom base URL.
+  - **MiMo** — model (preset / voicedesign / voiceclone / legacy v2), voice presets, format, style prompt, opening-style tags, audio-event tags, saved style presets, voice clone uploader (≤10 MB).
+  - **Gemini** — 30 prebuilt voices, style preamble, audio-tag chips.
+  - **Qwen** — model, voice, endpoint (China / International), `language_type` (Auto / Chinese / English / German), optional instructions for `qwen3-tts-instruct-flash`.
 - Chunked long-text playback with next-chunk prefetch.
-- Sidebar read, test voice, pause/resume, stop, progress, and speed control.
-- Quick Read command for the current selection or clipboard.
-- DashScope API key from VS Code SecretStorage or `DASHSCOPE_API_KEY`.
+- Sidebar Read, Test Voice, Pause / Resume, Stop, progress, and local playback-speed control.
+- Quick Read command for the current selection or clipboard (⌘⌥R / Ctrl+Alt+R).
+- API keys per provider in VS Code SecretStorage, plus environment-variable fallbacks (`OPENAI_API_KEY`, `GEMINI_API_KEY` / `GOOGLE_API_KEY`, `DASHSCOPE_API_KEY`).
 
 ## Setup
 
 1. Install the extension in VS Code.
-2. Run **Qwen TTS Studio: Set DashScope API Key...** or set
-   `DASHSCOPE_API_KEY` in the VS Code extension host environment.
-3. Open the Qwen TTS sidebar, choose a voice and language, paste text, and
-   press **Read**.
+2. Open the **AI Voice Studio** sidebar.
+3. Pick the provider you want from the strip at the top.
+4. Click **Set key** (or run `AI Voice Studio: Set API Key…`) to store the API key.
+5. Paste text, press **▶ Read**, or use ⌘⌥R / Ctrl+Alt+R on a selection in the editor.
 
 ## Commands
 
@@ -33,52 +30,21 @@ and playback speed.
 | --- | --- |
 | `aiVoiceStudio.quickRead` | Read the selected editor text, or clipboard text if there is no selection. |
 | `aiVoiceStudio.stop` | Stop current playback and cancel in-flight synthesis. |
-| `aiVoiceStudio.setApiKey` | Store a DashScope API key in VS Code SecretStorage. |
-| `aiVoiceStudio.clearApiKey` | Clear the stored DashScope API key. |
-| `aiVoiceStudio.focusView` | Focus the Qwen TTS sidebar. |
+| `aiVoiceStudio.setApiKey` | Store an API key for a chosen provider in VS Code SecretStorage. |
+| `aiVoiceStudio.clearApiKey` | Clear the stored API key for a chosen provider. |
+| `aiVoiceStudio.focusView` | Focus the AI Voice Studio sidebar. |
 
 ## Settings
 
 | Setting | Default | Notes |
 | --- | --- | --- |
-| `aiVoiceStudio.playbackRate` | `1` | Local playback speed, 0.5-4.0. |
+| `aiVoiceStudio.provider` | `openai` | One of `openai`, `mimo`, `gemini`, `qwen`. |
+| `aiVoiceStudio.playbackRate` | `1` | Local playback speed, 0.5–4.0. |
 | `aiVoiceStudio.chunkSize` | `250` | Maximum characters per synthesis chunk. |
-| `aiVoiceStudio.qwen.model` | `qwen3-tts-flash` | `qwen3-tts-flash` or `qwen3-tts-instruct-flash`. |
-| `aiVoiceStudio.qwen.voice` | `Cherry` | Qwen voice ID. |
-| `aiVoiceStudio.qwen.endpoint` | `china` | `china` or `international`. |
-| `aiVoiceStudio.qwen.languageType` | `Auto` | Sent as `language_type`. |
-| `aiVoiceStudio.qwen.instructions` | `""` | Sent only with `qwen3-tts-instruct-flash`. |
-
-## Qwen-TTS Request Shape
-
-The extension uses the DashScope multimodal generation endpoint:
-
-```http
-POST https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation
-Authorization: Bearer ${DASHSCOPE_API_KEY}
-Content-Type: application/json
-```
-
-```json
-{
-  "model": "qwen3-tts-flash",
-  "input": {
-    "text": "...",
-    "voice": "Cherry",
-    "language_type": "Chinese"
-  }
-}
-```
-
-For `qwen3-tts-instruct-flash`, the extension may add:
-
-```json
-{
-  "input": {
-    "instructions": "Read warmly with a measured cadence."
-  }
-}
-```
+| `aiVoiceStudio.openai.*` | — | model, voice, format, instructions, speed, baseUrl. |
+| `aiVoiceStudio.mimo.*` | — | model, voice, format, baseUrl, stylePrompt, openingStyleTags, audioEventTags, stylePresets. |
+| `aiVoiceStudio.gemini.*` | — | model, voice, baseUrl, stylePreamble. |
+| `aiVoiceStudio.qwen.*` | — | model, voice, endpoint, languageType, instructions. |
 
 ## Development
 
@@ -89,6 +55,4 @@ npm run lint
 npm run vscode:prepublish
 ```
 
-Live DashScope calls should be opt-in in any future smoke script. Do not call
-DashScope from tests unless explicitly guarded by an environment variable such
-as `AI_VOICE_STUDIO_LIVE=1`.
+Live API calls are opt-in inside tests. Do not call OpenAI / MiMo / Gemini / DashScope from tests unless explicitly guarded by an environment variable such as `AI_VOICE_STUDIO_LIVE=1`.

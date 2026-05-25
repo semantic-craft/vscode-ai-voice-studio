@@ -1,4 +1,4 @@
-import { TTSApiError, type SynthesizeResult } from "./types";
+import { TTSApiError, type SynthesizeResult } from "./providers";
 
 export interface PlaybackChunkPayload {
   index: number;

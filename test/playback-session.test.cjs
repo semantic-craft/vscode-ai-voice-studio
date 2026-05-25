@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 
 const { runPlaybackSession } = require("../out/core/playback-session.js");
-const { TTSApiError } = require("../out/core/types.js");
+const { TTSApiError } = require("../out/core/providers.js");
 
 function deferred() {
   let resolve;

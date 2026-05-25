@@ -1,58 +1,41 @@
 import * as vscode from "vscode";
-import type { ProviderId } from "./core/providers";
 
-const SECRET_KEYS: Record<ProviderId, string> = {
-  openai: "aiVoiceStudio.openai.apiKey",
-  minimax: "aiVoiceStudio.minimax.apiKey",
-  mimo: "aiVoiceStudio.mimo.apiKey",
-  gemini: "aiVoiceStudio.gemini.apiKey",
-};
-
-const PROMPT_TITLES: Record<ProviderId, string> = {
-  openai: "OpenAI API key",
-  minimax: "MiniMax API key",
-  mimo: "MiMo Token Plan API key (tp-…)",
-  gemini: "Google AI Studio API key",
-};
-
-const PLACEHOLDERS: Record<ProviderId, string> = {
-  openai: "sk-...",
-  minimax: "eyJhbGciOi...",
-  mimo: "tp-...",
-  gemini: "AIzaSy...",
-};
+const SECRET_KEY = "aiVoiceStudio.qwen.dashscopeApiKey";
 
 export class SecretsStore {
   constructor(private readonly secrets: vscode.SecretStorage) {}
 
-  async get(provider: ProviderId): Promise<string | undefined> {
-    return this.secrets.get(SECRET_KEYS[provider]);
+  async get(): Promise<string | undefined> {
+    const stored = (await this.secrets.get(SECRET_KEY))?.trim();
+    if (stored) return stored;
+    const envKey = process.env.DASHSCOPE_API_KEY?.trim();
+    return envKey || undefined;
   }
 
-  async set(provider: ProviderId, key: string): Promise<void> {
-    await this.secrets.store(SECRET_KEYS[provider], key);
+  async set(key: string): Promise<void> {
+    await this.secrets.store(SECRET_KEY, key);
   }
 
-  async clear(provider: ProviderId): Promise<void> {
-    await this.secrets.delete(SECRET_KEYS[provider]);
+  async clear(): Promise<void> {
+    await this.secrets.delete(SECRET_KEY);
   }
 
-  async ensure(provider: ProviderId): Promise<string | undefined> {
-    const existing = await this.get(provider);
+  async ensure(): Promise<string | undefined> {
+    const existing = await this.get();
     if (existing) return existing;
 
     const value = await vscode.window.showInputBox({
-      title: PROMPT_TITLES[provider],
+      title: "DashScope API key",
       prompt: "Stored in VS Code SecretStorage. Leave empty to cancel.",
       password: true,
       ignoreFocusOut: true,
-      placeHolder: PLACEHOLDERS[provider],
+      placeHolder: "DASHSCOPE_API_KEY / sk-...",
       validateInput: (input) => (input.trim().length === 0 ? "API key cannot be empty." : null),
     });
 
     if (!value) return undefined;
     const trimmed = value.trim();
-    await this.set(provider, trimmed);
+    await this.set(trimmed);
     return trimmed;
   }
 }

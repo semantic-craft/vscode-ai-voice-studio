@@ -1,8 +1,8 @@
 {
   "name": "ai-voice-studio",
-  "displayName": "AI Voice Studio",
-  "description": "Read text aloud in VS Code with OpenAI, MiniMax, MiMo, and Google Gemini TTS — voices, voice clone, emotion tags, and director mode from the sidebar.",
-  "version": "0.6.1",
+  "displayName": "Qwen TTS Studio",
+  "description": "Read text aloud in VS Code with Alibaba Cloud Qwen-TTS via DashScope.",
+  "version": "0.7.0",
   "publisher": "xianwei-zhang",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -25,12 +25,10 @@
     "text-to-speech",
     "speech",
     "voice",
-    "openai",
-    "minimax",
-    "mimo",
-    "gemini",
-    "voice clone",
-    "voice design"
+    "qwen",
+    "dashscope",
+    "aliyun",
+    "alibaba cloud"
   ],
   "main": "./out/extension.js",
   "activationEvents": [
@@ -46,7 +44,7 @@
       "activitybar": [
         {
           "id": "aiVoiceStudio",
-          "title": "AI Voice Studio",
+          "title": "Qwen TTS",
           "icon": "media/icon.svg"
         }
       ]
@@ -56,7 +54,7 @@
         {
           "type": "webview",
           "id": "aiVoiceStudio.studio",
-          "name": "Voice Studio"
+          "name": "Qwen TTS"
         }
       ]
     },
@@ -64,27 +62,27 @@
       {
         "command": "aiVoiceStudio.quickRead",
         "title": "Read Selection (or Clipboard)",
-        "category": "AI Voice Studio"
+        "category": "Qwen TTS Studio"
       },
       {
         "command": "aiVoiceStudio.stop",
         "title": "Stop Reading",
-        "category": "AI Voice Studio"
+        "category": "Qwen TTS Studio"
       },
       {
         "command": "aiVoiceStudio.setApiKey",
-        "title": "Set API Key…",
-        "category": "AI Voice Studio"
+        "title": "Set DashScope API Key...",
+        "category": "Qwen TTS Studio"
       },
       {
         "command": "aiVoiceStudio.clearApiKey",
-        "title": "Clear API Key…",
-        "category": "AI Voice Studio"
+        "title": "Clear DashScope API Key",
+        "category": "Qwen TTS Studio"
       },
       {
         "command": "aiVoiceStudio.focusView",
-        "title": "Focus Sidebar",
-        "category": "AI Voice Studio"
+        "title": "Focus Qwen TTS Sidebar",
+        "category": "Qwen TTS Studio"
       }
     ],
     "menus": {
@@ -110,20 +108,14 @@
       }
     ],
     "configuration": {
-      "title": "AI Voice Studio",
+      "title": "Qwen TTS Studio",
       "properties": {
-        "aiVoiceStudio.provider": {
-          "type": "string",
-          "enum": ["openai", "minimax", "mimo", "gemini"],
-          "default": "openai",
-          "description": "Active TTS provider."
-        },
         "aiVoiceStudio.playbackRate": {
           "type": "number",
           "minimum": 0.5,
           "maximum": 4,
           "default": 1,
-          "description": "Playback rate (0.5–4.0). Adjusts player speed without re-synthesis."
+          "description": "Playback rate (0.5-4.0). Adjusts player speed without re-synthesis."
         },
         "aiVoiceStudio.chunkSize": {
           "type": "number",
@@ -132,243 +124,44 @@
           "default": 250,
           "description": "Maximum characters per synthesis chunk. Long text is split at sentence boundaries; the next chunk synthesizes while the current one plays."
         },
-        "aiVoiceStudio.openai.model": {
-          "type": "string",
-          "enum": ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"],
-          "enumDescriptions": [
-            "GPT-4o Mini TTS — supports speaking instructions",
-            "TTS-1 — legacy model, faster",
-            "TTS-1 HD — legacy model, higher quality"
-          ],
-          "default": "gpt-4o-mini-tts",
-          "description": "OpenAI text-to-speech model."
-        },
-        "aiVoiceStudio.openai.voice": {
-          "type": "string",
-          "default": "cedar",
-          "description": "Default OpenAI voice."
-        },
-        "aiVoiceStudio.openai.format": {
-          "type": "string",
-          "enum": ["mp3", "opus", "aac", "flac", "wav", "pcm"],
-          "enumDescriptions": [
-            "MP3 — general-purpose (default)",
-            "Opus — low-latency internet streaming",
-            "AAC — iOS / Android / YouTube",
-            "FLAC — lossless archival",
-            "WAV — uncompressed, low-latency playback",
-            "PCM — raw 24 kHz 16-bit samples, no header"
-          ],
-          "default": "mp3",
-          "description": "OpenAI audio response format."
-        },
-        "aiVoiceStudio.openai.instructions": {
-          "type": "string",
-          "default": "",
-          "description": "Speaking instructions (gpt-4o-mini-tts only). Example: 'Read naturally; preserve Chinese and English pronunciation.'"
-        },
-        "aiVoiceStudio.openai.speed": {
-          "type": "number",
-          "minimum": 0.25,
-          "maximum": 4,
-          "default": 1,
-          "description": "OpenAI server-side synthesis speed (0.25–4.0). 1.0 is the default."
-        },
-        "aiVoiceStudio.openai.baseUrl": {
-          "type": "string",
-          "default": "https://api.openai.com/v1",
-          "description": "OpenAI-compatible base URL."
-        },
-        "aiVoiceStudio.minimax.model": {
+        "aiVoiceStudio.qwen.model": {
           "type": "string",
           "enum": [
-            "speech-2.8-hd",
-            "speech-2.8-turbo",
-            "speech-2.6-hd",
-            "speech-2.6-turbo",
-            "speech-02-hd",
-            "speech-02-turbo",
-            "speech-01-hd",
-            "speech-01-turbo"
+            "qwen3-tts-flash",
+            "qwen3-tts-instruct-flash"
           ],
           "enumDescriptions": [
-            "Speech 2.8 HD — emotion fused with 语气词 (laughs/sighs/etc).",
-            "Speech 2.8 Turbo — fastest 2.8 generation.",
-            "Speech 2.6 HD — low-latency, normalized prosody.",
-            "Speech 2.6 Turbo — best for chat / digital human.",
-            "Speech 02 HD — premium prosody and clone fidelity.",
-            "Speech 02 Turbo — strong on small languages.",
-            "Speech 01 HD — legacy stable.",
-            "Speech 01 Turbo — legacy fast."
+            "Qwen3 TTS Flash - current recommended non-realtime model.",
+            "Qwen3 TTS Instruct Flash - sends style instructions."
           ],
-          "default": "speech-2.8-hd",
-          "description": "MiniMax T2A model. The speech-2.8 family also supports inline 语气词 like (laughs)/(sighs)."
+          "default": "qwen3-tts-flash",
+          "description": "Qwen-TTS model."
         },
-        "aiVoiceStudio.minimax.voice": {
+        "aiVoiceStudio.qwen.voice": {
           "type": "string",
-          "default": "Chinese (Mandarin)_Radio_Host",
-          "description": "Default MiniMax voice ID."
+          "default": "Cherry",
+          "description": "Default Qwen-TTS voice ID."
         },
-        "aiVoiceStudio.minimax.format": {
+        "aiVoiceStudio.qwen.endpoint": {
           "type": "string",
-          "enum": ["mp3", "wav"],
-          "default": "mp3",
-          "description": "MiniMax audio output format."
-        },
-        "aiVoiceStudio.minimax.region": {
-          "type": "string",
-          "enum": ["mainland", "global"],
-          "default": "mainland",
-          "description": "MiniMax API region (mainland: api.minimaxi.com, global: api.minimax.io)."
-        },
-        "aiVoiceStudio.minimax.speed": {
-          "type": "number",
-          "minimum": 0.5,
-          "maximum": 2,
-          "default": 1,
-          "description": "MiniMax synthesis speed (0.5–2.0). Server-side; affects pacing/prosody."
-        },
-        "aiVoiceStudio.minimax.sampleRate": {
-          "type": "number",
-          "default": 32000,
-          "description": "MiniMax audio sample rate (Hz)."
-        },
-        "aiVoiceStudio.minimax.bitrate": {
-          "type": "number",
-          "default": 128000,
-          "description": "MiniMax audio bitrate."
-        },
-        "aiVoiceStudio.minimax.languageBoost": {
-          "type": "string",
-          "default": "",
-          "description": "MiniMax language boost hint (e.g. 'Chinese' or 'English' or 'auto'). Optional. 40+ languages supported — see docs."
-        },
-        "aiVoiceStudio.minimax.vol": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 10,
-          "default": 1,
-          "description": "MiniMax output volume (0–10). 1 is the doc default; bump up only if rendered audio is too quiet."
-        },
-        "aiVoiceStudio.minimax.pitch": {
-          "type": "number",
-          "minimum": -12,
-          "maximum": 12,
-          "default": 0,
-          "description": "MiniMax pitch shift in semitones (-12 to +12). 0 keeps the voice natural."
-        },
-        "aiVoiceStudio.minimax.emotion": {
-          "type": "string",
-          "enum": ["auto", "happy", "sad", "angry", "fearful", "disgusted", "surprised", "neutral"],
-          "default": "auto",
-          "description": "MiniMax synthesis emotion. 'auto' lets the model decide. The speech-2.8 family fuses this with 语气词 markers."
-        },
-        "aiVoiceStudio.minimax.channel": {
-          "type": "number",
-          "enum": [1, 2],
-          "default": 1,
-          "description": "Output channel: 1 = mono, 2 = stereo."
-        },
-        "aiVoiceStudio.minimax.pronunciationDict": {
-          "type": "array",
-          "items": { "type": "string" },
-          "default": [],
-          "description": "MiniMax pronunciation overrides. One entry per item, e.g. '处理/(chu3)(li3)' (pinyin) or '危险/dangerous' (replacement)."
-        },
-        "aiVoiceStudio.mimo.model": {
-          "type": "string",
-          "enum": [
-            "mimo-v2.5-tts",
-            "mimo-v2.5-tts-voicedesign",
-            "mimo-v2.5-tts-voiceclone",
-            "mimo-v2-tts"
-          ],
+          "enum": ["china", "international"],
           "enumDescriptions": [
-            "Preset voices (Bingtang / Chloe / etc.). Supports singing mode and tag control.",
-            "Voice Design — describe the voice in plain language; no preset needed.",
-            "Voice Clone — clone a custom voice from an mp3/wav sample (≤10 MB).",
-            "Legacy V2 model with the original Chinese / English presets."
+            "China endpoint: dashscope.aliyuncs.com.",
+            "International endpoint: dashscope-intl.aliyuncs.com. Uses a region-specific API key."
           ],
-          "default": "mimo-v2.5-tts",
-          "description": "MiMo TTS model. v2.5 adds Voice Design and Voice Clone alongside the preset model."
+          "default": "china",
+          "description": "DashScope endpoint for Qwen-TTS."
         },
-        "aiVoiceStudio.mimo.voice": {
+        "aiVoiceStudio.qwen.languageType": {
           "type": "string",
-          "default": "mimo_default",
-          "description": "Default MiMo voice ID. Ignored for the voicedesign / voiceclone models."
+          "enum": ["Auto", "Chinese", "English", "German"],
+          "default": "Auto",
+          "description": "Qwen-TTS language_type. Choose a single language for better pronunciation, or Auto for mixed/unknown text."
         },
-        "aiVoiceStudio.mimo.format": {
-          "type": "string",
-          "enum": ["mp3", "wav"],
-          "default": "wav",
-          "description": "MiMo audio output format."
-        },
-        "aiVoiceStudio.mimo.baseUrl": {
-          "type": "string",
-          "default": "https://token-plan-cn.xiaomimimo.com/v1",
-          "description": "MiMo Token Plan base URL. Same host serves the OpenAI-compatible /v1 (TTS) and Anthropic-compatible /anthropic routes; both share Token Plan billing."
-        },
-        "aiVoiceStudio.mimo.stylePrompt": {
+        "aiVoiceStudio.qwen.instructions": {
           "type": "string",
           "default": "",
-          "description": "Style instruction sent as the role:user message. Doubles as the voice description for the voicedesign model (required there). Use the Insert Director Mode template button in the sidebar for richer control."
-        },
-        "aiVoiceStudio.mimo.openingStyleTags": {
-          "type": "array",
-          "items": { "type": "string" },
-          "default": [],
-          "description": "Opening-style tags injected as a leading (tag) prefix on the synthesized text (e.g. '开心', '严肃', '兴奋', '粤语', '夹子音'). Custom values are accepted in addition to the doc presets. The 唱歌 tag overrides everything else."
-        },
-        "aiVoiceStudio.mimo.audioEventTags": {
-          "type": "array",
-          "items": { "type": "string" },
-          "default": [],
-          "description": "Audio-event tags injected as a Chinese-bracket prefix (e.g. '紧张', '笑', '深呼吸', '哽咽'). Custom values are accepted alongside the doc presets."
-        },
-        "aiVoiceStudio.mimo.stylePresets": {
-          "type": "array",
-          "default": [],
-          "description": "Saved (name, stylePrompt, opening tags, event tags) bundles. Manage them from the sidebar's Preset row.",
-          "items": {
-            "type": "object",
-            "required": ["name"],
-            "properties": {
-              "name": { "type": "string" },
-              "stylePrompt": { "type": "string" },
-              "openingStyleTags": { "type": "array", "items": { "type": "string" } },
-              "audioEventTags": { "type": "array", "items": { "type": "string" } }
-            }
-          }
-        },
-        "aiVoiceStudio.gemini.model": {
-          "type": "string",
-          "enum": [
-            "gemini-3.1-flash-tts-preview",
-            "gemini-2.5-flash-preview-tts",
-            "gemini-2.5-pro-preview-tts"
-          ],
-          "enumDescriptions": [
-            "Latest preview. 30 prebuilt voices, free on AI Studio free tier.",
-            "Earlier Flash TTS preview, same 30-voice roster.",
-            "Pro variant of the 2.5 TTS preview, higher quality."
-          ],
-          "default": "gemini-3.1-flash-tts-preview",
-          "description": "Google Gemini speech-generation model."
-        },
-        "aiVoiceStudio.gemini.voice": {
-          "type": "string",
-          "default": "Kore",
-          "description": "Default Gemini prebuilt voice. 30 personalities (Zephyr, Puck, Kore, Charon, …)."
-        },
-        "aiVoiceStudio.gemini.baseUrl": {
-          "type": "string",
-          "default": "https://generativelanguage.googleapis.com/v1beta",
-          "description": "Generative Language API base URL. The TTS endpoint is appended as /models/{model}:generateContent."
-        },
-        "aiVoiceStudio.gemini.stylePreamble": {
-          "type": "string",
-          "default": "",
-          "description": "Optional inline preamble prefixed in front of each chunk (e.g. 'Read in a calm narrator voice'). Combine with [bracket] audio tags inside the text for finer control."
+          "description": "Style instructions sent only when model is qwen3-tts-instruct-flash."
         }
       }
     }

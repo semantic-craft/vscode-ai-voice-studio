@@ -19,22 +19,52 @@ export interface SessionResult {
   emitted: number;
 }
 
+export interface PlaybackSessionOptions {
+  /**
+   * How many chunks to keep prefetched ahead of the one currently being
+   * emitted. A value of 1 means "next chunk is in flight while current plays".
+   * Higher values flatten gap between chunks at the cost of running more
+   * concurrent synth requests.
+   */
+  lookahead?: number;
+}
+
+const DEFAULT_LOOKAHEAD = 2;
+
 export async function runPlaybackSession(
   chunks: string[],
   synthesizeChunk: ChunkSynthesizer,
   onChunk: ChunkSink,
   signal: AbortSignal,
+  options: PlaybackSessionOptions = {},
 ): Promise<SessionResult> {
   if (chunks.length === 0) return { cancelled: false, emitted: 0 };
 
-  let pending: Promise<SettledSynthesis> | null = settleSynthesis(synthesizeChunk(chunks[0], signal));
-  let emitted = 0;
+  const lookahead = Math.max(1, Math.min(options.lookahead ?? DEFAULT_LOOKAHEAD, chunks.length));
 
+  // Sliding window of in-flight (or settled) synthesizers. Index 0 is the
+  // chunk we're about to emit; the rest are pre-fetched.
+  const pending: Promise<SettledSynthesis>[] = [];
+  let nextChunkToPrime = 0;
+
+  const primeNext = (): void => {
+    if (nextChunkToPrime >= chunks.length) return;
+    if (signal.aborted) return;
+    pending.push(settleSynthesis(synthesizeChunk(chunks[nextChunkToPrime], signal)));
+    nextChunkToPrime += 1;
+  };
+
+  // Pre-fetch up to `lookahead` chunks so the first emit doesn't wait for the
+  // second to even start.
+  for (let i = 0; i < lookahead; i++) primeNext();
+
+  let emitted = 0;
   for (let i = 0; i < chunks.length; i++) {
     if (signal.aborted) return { cancelled: true, emitted };
 
-    const current = pending!;
-    pending = i + 1 < chunks.length ? settleSynthesis(synthesizeChunk(chunks[i + 1], signal)) : null;
+    const current = pending.shift()!;
+    // Keep the window full: as soon as we pop one off, prime the next.
+    primeNext();
 
     const settled = await current;
     if (!settled.ok) {

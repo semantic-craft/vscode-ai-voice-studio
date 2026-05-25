@@ -1,5 +1,30 @@
 # Changelog
 
+## 0.10.0 - 2026-05-25
+
+Big latency + ergonomics push for the Qwen-TTS streaming path, and the provider
+lineup is trimmed to **Qwen / Gemini / MiMo** (OpenAI removed).
+
+- **WebAudio seamless playback** for streamed PCM. Each SSE sub-chunk is now
+  decoded into an `AudioBuffer` and scheduled on a shared `AudioContext`
+  timeline, so adjacent segments butt up against each other sample-accurately.
+  The 50–100 ms gap that `<audio>` introduced between segments is gone.
+- **Multi-step lookahead.** `playback-session` now keeps a configurable
+  prefetch window (default 2) — while the current chunk plays, the next two
+  are already in flight. Multi-chunk text no longer stalls at chunk
+  boundaries.
+- **Tiered timeouts.** Qwen-TTS adds a 15 s time-to-first-byte timer on top of
+  the existing 90 s overall ceiling. Stalled connections fail fast with a
+  helpful message; long but live streams still get the full budget.
+- **Removed OpenAI provider.** The provider switcher now exposes Qwen, Gemini,
+  and MiMo. The OpenAI source, voices catalog, settings schema, and tests
+  were removed. Existing `aiVoiceStudio.openai.*` settings are ignored
+  (they'll be cleaned up the next time the user touches the section).
+- **Provider default changed** from `openai` to `qwen`.
+
+Test count goes from 25 (in 0.9.1) to 25 — we dropped the two OpenAI tests
+and added two new ones for lookahead behavior and incremental SSE emit.
+
 ## 0.9.1 - 2026-05-25
 
 - Fix(Qwen SSE): the previous 0.9.0 streaming reader buffered every PCM

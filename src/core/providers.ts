@@ -1,9 +1,8 @@
-export type ProviderId = "openai" | "mimo" | "gemini" | "qwen";
+export type ProviderId = "mimo" | "gemini" | "qwen";
 
-export const PROVIDER_IDS: ProviderId[] = ["openai", "mimo", "gemini", "qwen"];
+export const PROVIDER_IDS: ProviderId[] = ["mimo", "gemini", "qwen"];
 
 export const PROVIDER_LABELS: Record<ProviderId, string> = {
-  openai: "OpenAI",
   mimo: "MiMo",
   gemini: "Gemini",
   qwen: "Qwen",
@@ -57,7 +56,7 @@ export interface ProviderCatalog {
 }
 
 export function isProviderId(value: unknown): value is ProviderId {
-  return value === "openai" || value === "mimo" || value === "gemini" || value === "qwen";
+  return value === "mimo" || value === "gemini" || value === "qwen";
 }
 
 export function getVoiceById(catalog: ProviderCatalog, id: string): VoiceConfig | undefined {

@@ -2,7 +2,6 @@ import * as vscode from "vscode";
 import type { ProviderId } from "./core/providers";
 
 const SECRET_KEYS: Record<ProviderId, string> = {
-  openai: "aiVoiceStudio.openai.apiKey",
   mimo: "aiVoiceStudio.mimo.apiKey",
   gemini: "aiVoiceStudio.gemini.apiKey",
   qwen: "aiVoiceStudio.qwen.dashscopeApiKey",
@@ -10,19 +9,16 @@ const SECRET_KEYS: Record<ProviderId, string> = {
 
 const ENV_FALLBACKS: Partial<Record<ProviderId, string[]>> = {
   qwen: ["DASHSCOPE_API_KEY"],
-  openai: ["OPENAI_API_KEY"],
   gemini: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
 };
 
 const PROMPT_TITLES: Record<ProviderId, string> = {
-  openai: "OpenAI API key",
   mimo: "MiMo Token Plan API key (tp-…)",
   gemini: "Google AI Studio API key",
   qwen: "DashScope API key",
 };
 
 const PLACEHOLDERS: Record<ProviderId, string> = {
-  openai: "sk-...",
   mimo: "tp-...",
   gemini: "AIzaSy...",
   qwen: "DASHSCOPE_API_KEY / sk-...",

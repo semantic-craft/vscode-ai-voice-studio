@@ -1,6 +1,4 @@
 import { type ProviderCatalog, type ProviderId, type SynthesizeContext, type SynthesizeResult } from "./providers";
-import { OPENAI_CATALOG } from "./openai-voices";
-import { synthesizeOpenAI, type OpenAISynthesizeArgs } from "./openai-tts";
 import { MIMO_CATALOG } from "./mimo-voices";
 import { synthesizeMiMo, type MiMoSynthesizeArgs } from "./mimo-tts";
 import { GEMINI_CATALOG } from "./gemini-voices";
@@ -9,22 +7,18 @@ import { QWEN_CATALOG } from "./qwen-voices";
 import { synthesizeQwen, type QwenSynthesizeArgs } from "./qwen-tts";
 
 export const CATALOGS: Record<ProviderId, ProviderCatalog> = {
-  openai: OPENAI_CATALOG,
   mimo: MIMO_CATALOG,
   gemini: GEMINI_CATALOG,
   qwen: QWEN_CATALOG,
 };
 
 export type ProviderArgs =
-  | ({ provider: "openai" } & Omit<OpenAISynthesizeArgs, keyof SynthesizeContext>)
   | ({ provider: "mimo" } & Omit<MiMoSynthesizeArgs, keyof SynthesizeContext>)
   | ({ provider: "gemini" } & Omit<GeminiSynthesizeArgs, keyof SynthesizeContext>)
   | ({ provider: "qwen" } & Omit<QwenSynthesizeArgs, keyof SynthesizeContext>);
 
 export async function synthesize(ctx: SynthesizeContext, args: ProviderArgs): Promise<SynthesizeResult> {
   switch (args.provider) {
-    case "openai":
-      return synthesizeOpenAI({ ...ctx, ...args });
     case "mimo":
       return synthesizeMiMo({ ...ctx, ...args });
     case "gemini":

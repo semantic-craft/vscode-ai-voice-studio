@@ -57,6 +57,48 @@ test("playback session reports TTS aborts as cancellation", async () => {
   assert.deepEqual(result, { cancelled: true, emitted: 0 });
 });
 
+test("playback session keeps a configurable lookahead window of pending synth calls", async () => {
+  const defers = ["a", "b", "c", "d", "e"].map(() => deferred());
+  const started = [];
+  const emitted = [];
+  const controller = new AbortController();
+
+  const labels = ["a", "b", "c", "d", "e"];
+  const running = runPlaybackSession(
+    labels,
+    (text) => {
+      started.push(text);
+      return defers[labels.indexOf(text)].promise;
+    },
+    (payload) => emitted.push(payload),
+    controller.signal,
+    { lookahead: 2 },
+  );
+
+  // Lookahead=2 means: while the current chunk is being awaited, two chunks
+  // ahead are already in flight — i.e. peak concurrency is 3 (current +
+  // two prefetched). Right after kick-off we expect a, b, c to be started.
+  assert.deepEqual(started, ["a", "b", "c"]);
+
+  // Resolve a → d primed (window slides forward by one).
+  defers[0].resolve({ audioBase64: "MQ==", format: "mp3" });
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(started, ["a", "b", "c", "d"]);
+  assert.equal(emitted.length, 1);
+
+  // Resolve b → e primed.
+  defers[1].resolve({ audioBase64: "Mg==", format: "mp3" });
+  await new Promise((r) => setImmediate(r));
+  assert.deepEqual(started, ["a", "b", "c", "d", "e"]);
+  assert.equal(emitted.length, 2);
+
+  defers[2].resolve({ audioBase64: "Mw==", format: "mp3" });
+  defers[3].resolve({ audioBase64: "NA==", format: "mp3" });
+  defers[4].resolve({ audioBase64: "NQ==", format: "mp3" });
+  const result = await running;
+  assert.deepEqual(result, { cancelled: false, emitted: 5 });
+});
+
 test("playback session settles prefetched failures without unhandled rejections", async () => {
   const first = deferred();
   const second = deferred();

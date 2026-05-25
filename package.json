@@ -1,8 +1,8 @@
 {
   "name": "ai-voice-studio",
   "displayName": "AI Voice Studio",
-  "description": "Read text aloud in VS Code with OpenAI, MiMo, Google Gemini, and Alibaba Qwen TTS — voices, voice clone, emotion tags, and director mode from the sidebar.",
-  "version": "0.9.1",
+  "description": "Read text aloud in VS Code with MiMo, Google Gemini, and Alibaba Qwen TTS — voice cloning, emotion tags, director mode, and SSE streaming for sub-second first-audio latency.",
+  "version": "0.10.0",
   "publisher": "xianwei-zhang",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -25,7 +25,6 @@
     "text-to-speech",
     "speech",
     "voice",
-    "openai",
     "mimo",
     "gemini",
     "qwen",
@@ -116,8 +115,8 @@
       "properties": {
         "aiVoiceStudio.provider": {
           "type": "string",
-          "enum": ["openai", "mimo", "gemini", "qwen"],
-          "default": "openai",
+          "enum": ["mimo", "gemini", "qwen"],
+          "default": "qwen",
           "description": "Active TTS provider."
         },
         "aiVoiceStudio.playbackRate": {
@@ -133,53 +132,6 @@
           "maximum": 2000,
           "default": 250,
           "description": "Maximum characters per synthesis chunk. Long text is split at sentence boundaries; the next chunk synthesizes while the current one plays."
-        },
-        "aiVoiceStudio.openai.model": {
-          "type": "string",
-          "enum": ["gpt-4o-mini-tts", "tts-1", "tts-1-hd"],
-          "enumDescriptions": [
-            "GPT-4o Mini TTS — supports speaking instructions",
-            "TTS-1 — legacy model, faster",
-            "TTS-1 HD — legacy model, higher quality"
-          ],
-          "default": "gpt-4o-mini-tts",
-          "description": "OpenAI text-to-speech model."
-        },
-        "aiVoiceStudio.openai.voice": {
-          "type": "string",
-          "default": "cedar",
-          "description": "Default OpenAI voice."
-        },
-        "aiVoiceStudio.openai.format": {
-          "type": "string",
-          "enum": ["mp3", "opus", "aac", "flac", "wav", "pcm"],
-          "enumDescriptions": [
-            "MP3 — general-purpose (default)",
-            "Opus — low-latency internet streaming",
-            "AAC — iOS / Android / YouTube",
-            "FLAC — lossless archival",
-            "WAV — uncompressed, low-latency playback",
-            "PCM — raw 24 kHz 16-bit samples, no header"
-          ],
-          "default": "mp3",
-          "description": "OpenAI audio response format."
-        },
-        "aiVoiceStudio.openai.instructions": {
-          "type": "string",
-          "default": "",
-          "description": "Speaking instructions (gpt-4o-mini-tts only). Example: 'Read naturally; preserve Chinese and English pronunciation.'"
-        },
-        "aiVoiceStudio.openai.speed": {
-          "type": "number",
-          "minimum": 0.25,
-          "maximum": 4,
-          "default": 1,
-          "description": "OpenAI server-side synthesis speed (0.25–4.0). 1.0 is the default."
-        },
-        "aiVoiceStudio.openai.baseUrl": {
-          "type": "string",
-          "default": "https://api.openai.com/v1",
-          "description": "OpenAI-compatible base URL."
         },
         "aiVoiceStudio.mimo.model": {
           "type": "string",

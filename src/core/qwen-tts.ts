@@ -2,6 +2,7 @@ import { TTSApiError, type SynthesizeContext, type SynthesizeResult } from "./pr
 import { ENDPOINT_URLS, supportsInstructions, type QwenEndpoint, type QwenLanguageType, type QwenTTSModel } from "./qwen-voices";
 
 const REQUEST_TIMEOUT_MS = 90_000;
+const TTFB_TIMEOUT_MS = 15_000;
 
 export interface QwenSynthesizeArgs extends SynthesizeContext {
   apiKey: string;
@@ -69,6 +70,16 @@ export async function synthesizeQwen(args: QwenSynthesizeArgs): Promise<Synthesi
 
   const timeoutController = new AbortController();
   const timeoutId = setTimeout(() => timeoutController.abort(), REQUEST_TIMEOUT_MS);
+  let ttfbTimeoutId: ReturnType<typeof setTimeout> | undefined = setTimeout(
+    () => timeoutController.abort(),
+    TTFB_TIMEOUT_MS,
+  );
+  const clearTtfbTimer = (): void => {
+    if (ttfbTimeoutId !== undefined) {
+      clearTimeout(ttfbTimeoutId);
+      ttfbTimeoutId = undefined;
+    }
+  };
   const onAbort = () => timeoutController.abort();
   args.signal?.addEventListener("abort", onAbort, { once: true });
 
@@ -85,6 +96,9 @@ export async function synthesizeQwen(args: QwenSynthesizeArgs): Promise<Synthesi
       body: JSON.stringify(body),
       signal: timeoutController.signal,
     });
+    // Response headers received — we're past TTFB. The remaining wall-clock
+    // budget is governed by REQUEST_TIMEOUT_MS only.
+    clearTtfbTimer();
 
     if (args.onSubChunk) {
       return await readStreamingResponse(response, args.onSubChunk, args.signal);
@@ -126,11 +140,16 @@ export async function synthesizeQwen(args: QwenSynthesizeArgs): Promise<Synthesi
       throw new TTSApiError("TTS synthesis cancelled.", -7);
     }
     if (error instanceof Error && error.name === "AbortError") {
-      throw new TTSApiError(`Request timeout after ${REQUEST_TIMEOUT_MS / 1000}s`, -2);
+      const ttfbStillPending = ttfbTimeoutId !== undefined;
+      const message = ttfbStillPending
+        ? `No response from Qwen-TTS within ${TTFB_TIMEOUT_MS / 1000}s — check network or DashScope status.`
+        : `Request timeout after ${REQUEST_TIMEOUT_MS / 1000}s`;
+      throw new TTSApiError(message, -2);
     }
     throw new TTSApiError(error instanceof Error ? error.message : String(error), -6);
   } finally {
     clearTimeout(timeoutId);
+    clearTtfbTimer();
     args.signal?.removeEventListener("abort", onAbort);
   }
 }

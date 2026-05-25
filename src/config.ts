@@ -1,13 +1,6 @@
 import * as vscode from "vscode";
 import { isProviderId, type ProviderId } from "./core/providers";
 import {
-  DEFAULT_FORMAT as OPENAI_DEFAULT_FORMAT,
-  DEFAULT_MODEL as OPENAI_DEFAULT_MODEL,
-  DEFAULT_VOICE as OPENAI_DEFAULT_VOICE,
-  type OpenAIResponseFormat,
-  type OpenAITTSModel,
-} from "./core/openai-voices";
-import {
   DEFAULT_BASE_URL as MIMO_DEFAULT_BASE_URL,
   DEFAULT_FORMAT as MIMO_DEFAULT_FORMAT,
   DEFAULT_MODEL as MIMO_DEFAULT_MODEL,
@@ -35,16 +28,6 @@ import {
 } from "./core/qwen-voices";
 
 const SECTION = "aiVoiceStudio";
-const OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1";
-
-export interface OpenAIConfig {
-  model: OpenAITTSModel;
-  voice: string;
-  format: OpenAIResponseFormat;
-  instructions: string;
-  speed: number;
-  baseUrl: string;
-}
 
 export interface MiMoStylePreset {
   name: string;
@@ -83,7 +66,6 @@ export interface AppConfig {
   provider: ProviderId;
   playbackRate: number;
   chunkSize: number;
-  openai: OpenAIConfig;
   mimo: MiMoConfig;
   gemini: GeminiConfig;
   qwen: QwenConfig;
@@ -95,14 +77,6 @@ export function getConfig(): AppConfig {
     provider: normalizeProvider(cfg.get<string>("provider")),
     playbackRate: clampRate(cfg.get<number>("playbackRate") ?? 1),
     chunkSize: clampChunkSize(cfg.get<number>("chunkSize") ?? 250),
-    openai: {
-      model: normalizeOpenAIModel(cfg.get<string>("openai.model")),
-      voice: getTrimmedString(cfg, "openai.voice") || OPENAI_DEFAULT_VOICE,
-      format: normalizeOpenAIFormat(cfg.get<string>("openai.format")),
-      instructions: getTrimmedString(cfg, "openai.instructions"),
-      speed: clampOpenAISpeed(cfg.get<number>("openai.speed") ?? 1),
-      baseUrl: getTrimmedString(cfg, "openai.baseUrl") || OPENAI_DEFAULT_BASE_URL,
-    },
     mimo: {
       model: normalizeMiMoModel(cfg.get<string>("mimo.model")),
       voice: getTrimmedString(cfg, "mimo.voice") || MIMO_DEFAULT_VOICE,
@@ -137,21 +111,6 @@ export async function setMiMoOpeningStyleTags(tags: string[]): Promise<void> {
 export async function setGeminiStylePreamble(text: string): Promise<void> {
   const cfg = vscode.workspace.getConfiguration(SECTION);
   await cfg.update("gemini.stylePreamble", text, vscode.ConfigurationTarget.Global);
-}
-
-export async function setOpenAIFormat(format: string): Promise<void> {
-  const cfg = vscode.workspace.getConfiguration(SECTION);
-  await cfg.update("openai.format", normalizeOpenAIFormat(format), vscode.ConfigurationTarget.Global);
-}
-
-export async function setOpenAIInstructions(text: string): Promise<void> {
-  const cfg = vscode.workspace.getConfiguration(SECTION);
-  await cfg.update("openai.instructions", text, vscode.ConfigurationTarget.Global);
-}
-
-export async function setOpenAISpeed(speed: number): Promise<void> {
-  const cfg = vscode.workspace.getConfiguration(SECTION);
-  await cfg.update("openai.speed", clampOpenAISpeed(speed), vscode.ConfigurationTarget.Global);
 }
 
 export async function setMiMoAudioEventTags(tags: string[]): Promise<void> {
@@ -243,7 +202,7 @@ export async function setProviderModel(provider: ProviderId, model: string): Pro
 }
 
 function normalizeProvider(value: string | undefined): ProviderId {
-  return isProviderId(value) ? value : "openai";
+  return isProviderId(value) ? value : "qwen";
 }
 
 function getString(cfg: vscode.WorkspaceConfiguration, key: string): string {
@@ -253,23 +212,6 @@ function getString(cfg: vscode.WorkspaceConfiguration, key: string): string {
 
 function getTrimmedString(cfg: vscode.WorkspaceConfiguration, key: string): string {
   return getString(cfg, key).trim();
-}
-
-function normalizeOpenAIModel(value: string | undefined): OpenAITTSModel {
-  if (value === "gpt-4o-mini-tts" || value === "tts-1" || value === "tts-1-hd") return value;
-  return OPENAI_DEFAULT_MODEL;
-}
-
-function normalizeOpenAIFormat(value: string | undefined): OpenAIResponseFormat {
-  if (value === "mp3" || value === "wav" || value === "opus" || value === "aac" || value === "flac" || value === "pcm") {
-    return value;
-  }
-  return OPENAI_DEFAULT_FORMAT;
-}
-
-function clampOpenAISpeed(speed: number): number {
-  if (!Number.isFinite(speed)) return 1;
-  return Math.max(0.25, Math.min(4, speed));
 }
 
 function normalizeMiMoModel(value: string | undefined): MiMoModel {

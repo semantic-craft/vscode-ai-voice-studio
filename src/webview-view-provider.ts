@@ -17,7 +17,6 @@ import {
   VOICE_DESIGN_TEMPLATE,
 } from "./core/mimo-voices";
 import { AUDIO_TAG_PRESETS as GEMINI_AUDIO_TAGS } from "./core/gemini-voices";
-import { OPENAI_RESPONSE_FORMATS } from "./core/openai-voices";
 import { LANGUAGE_TYPES as QWEN_LANGUAGE_TYPES, type QwenEndpoint, type QwenLanguageType } from "./core/qwen-voices";
 
 type IncomingMessage =
@@ -40,9 +39,6 @@ type IncomingMessage =
   | { type: "mimoPresetDelete"; name: string }
   | { type: "geminiStylePreambleChanged"; text: string }
   | { type: "geminiInsertAudioTag"; tag: string }
-  | { type: "openaiInstructionsChanged"; text: string }
-  | { type: "openaiFormatChanged"; format: string }
-  | { type: "openaiSpeedChanged"; speed: number }
   | { type: "qwenEndpointChanged"; endpoint: QwenEndpoint }
   | { type: "qwenLanguageTypeChanged"; languageType: QwenLanguageType }
   | { type: "qwenInstructionsChanged"; text: string };
@@ -236,10 +232,8 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
     const designPlaceholder = JSON.stringify(VOICE_DESIGN_PLACEHOLDER);
     const clonePlaceholder = JSON.stringify(VOICE_CLONE_PLACEHOLDER);
     const geminiAudioTagsJson = JSON.stringify(GEMINI_AUDIO_TAGS);
-    const openaiFormatsJson = JSON.stringify(OPENAI_RESPONSE_FORMATS);
     const qwenLanguageTypesJson = JSON.stringify(QWEN_LANGUAGE_TYPES);
     const providerGlyphsJson = JSON.stringify({
-      openai: "◐",
       mimo: "✿",
       gemini: "✧",
       qwen: "❀",
@@ -679,23 +673,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
   <details class="card" id="voiceSettings" open>
     <summary>Voice character <span class="meta" id="voiceSettingsMeta"></span></summary>
     <div id="voiceSettingsBody">
-      <!-- OpenAI block -->
-      <div class="hidden" id="openaiBlock">
-        <div class="row">
-          <label for="openaiFormat">Format</label>
-          <select id="openaiFormat"></select>
-        </div>
-        <div class="row" id="openaiSpeedRow">
-          <label for="openaiSpeed">Speed</label>
-          <input id="openaiSpeed" type="range" min="0.25" max="4" step="0.05" />
-          <span class="rate-value" id="openaiSpeedValue"></span>
-        </div>
-        <div class="row stack" id="openaiInstructionsRow">
-          <label>Instructions</label>
-          <textarea id="openaiInstructions" class="compact" placeholder="Speaking instructions (gpt-4o-mini-tts only). Example: 'Read naturally; preserve Chinese and English pronunciation.'"></textarea>
-        </div>
-      </div>
-
       <!-- MiMo block — voice clone uploader (clonemode only) -->
       <div class="panel hidden" id="clonePanel">
         <div class="panel-title">Voice clone sample</div>
@@ -821,7 +798,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       const VOICE_DESIGN_PLACEHOLDER = ${designPlaceholder};
       const VOICE_CLONE_PLACEHOLDER = ${clonePlaceholder};
       const GEMINI_AUDIO_TAGS = ${geminiAudioTagsJson};
-      const OPENAI_FORMATS = ${openaiFormatsJson};
       const QWEN_LANGUAGE_TYPES = ${qwenLanguageTypesJson};
       const PROVIDER_GLYPHS = ${providerGlyphsJson};
       const TEST_PHRASES = {
@@ -847,8 +823,95 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       let currentlyPlaying = null;
       let playGeneration = 0;
       let pendingAction = null;
-      let pendingOpenAISpeed = false;
       const queue = [];
+
+      // ---------- WebAudio seamless PCM streaming ----------
+      // SSE delivers many small PCM segments back-to-back; using <audio> per
+      // segment leaves audible 50–100 ms gaps. The WebAudio path schedules
+      // each segment on a shared AudioContext timeline so adjacent segments
+      // butt up against each other sample-accurately.
+      let audioCtx = null;
+      let pcmNextStartTime = 0;
+      const pcmActiveSources = new Set();
+      function ensureAudioContext() {
+        if (!audioCtx) {
+          const Ctx = window.AudioContext || window.webkitAudioContext;
+          audioCtx = new Ctx({ sampleRate: 24000 });
+        }
+        if (audioCtx.state === "suspended" && mode !== "paused") {
+          audioCtx.resume().catch(() => {});
+        }
+        return audioCtx;
+      }
+      function decodePcm16ToAudioBuffer(ctx, base64) {
+        const binary = atob(base64);
+        const sampleCount = (binary.length / 2) | 0;
+        const buffer = ctx.createBuffer(1, sampleCount, 24000);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < sampleCount; i++) {
+          const lo = binary.charCodeAt(2 * i);
+          const hi = binary.charCodeAt(2 * i + 1);
+          let sample = (hi << 8) | lo;
+          if (sample >= 0x8000) sample -= 0x10000;
+          data[i] = sample / 32768;
+        }
+        return buffer;
+      }
+      function enqueuePcmSubChunk(msg) {
+        const ctx = ensureAudioContext();
+        const audioBuffer = decodePcm16ToAudioBuffer(ctx, msg.audioBase64);
+        const source = ctx.createBufferSource();
+        source.buffer = audioBuffer;
+        const rate = Number.isFinite(state.playbackRate) ? state.playbackRate : 1;
+        source.playbackRate.value = Math.max(0.5, Math.min(4, rate));
+        source.connect(ctx.destination);
+
+        const startAt = Math.max(ctx.currentTime + 0.005, pcmNextStartTime);
+        try {
+          source.start(startAt);
+        } catch (err) {
+          // start() throws if ctx is closed or in an inconsistent state — drop.
+          source.disconnect();
+          return;
+        }
+        const effectiveDuration = audioBuffer.duration / source.playbackRate.value;
+        pcmNextStartTime = startAt + effectiveDuration;
+        pcmActiveSources.add(source);
+        source.onended = () => {
+          pcmActiveSources.delete(source);
+          if (!activeSession) return;
+          if (msg.isLast) {
+            chunksPlayed += 1;
+            setProgress(chunksPlayed, activeSession.total);
+            if (sessionDone && pcmActiveSources.size === 0) {
+              setMode("idle");
+              setStatus("Done.", "success");
+              activeSession = null;
+            }
+          }
+        };
+
+        if (mode === "synth") {
+          setMode("playing");
+          setStatus(msg.label ? "Playing — " + msg.label : "Playing.", "info");
+        }
+      }
+      function tearDownPcmStream() {
+        for (const src of pcmActiveSources) {
+          try {
+            src.onended = null;
+            src.stop();
+            src.disconnect();
+          } catch (_) {
+            // ignore
+          }
+        }
+        pcmActiveSources.clear();
+        pcmNextStartTime = 0;
+        if (audioCtx && audioCtx.state === "running") {
+          audioCtx.suspend().catch(() => {});
+        }
+      }
 
       const els = {
         providerStrip:      document.getElementById("providerStrip"),
@@ -859,13 +922,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         testVoiceBtn:       document.getElementById("testVoiceBtn"),
         voiceSettings:      document.getElementById("voiceSettings"),
         voiceSettingsMeta:  document.getElementById("voiceSettingsMeta"),
-        openaiBlock:        document.getElementById("openaiBlock"),
-        openaiFormat:       document.getElementById("openaiFormat"),
-        openaiSpeedRow:     document.getElementById("openaiSpeedRow"),
-        openaiSpeed:        document.getElementById("openaiSpeed"),
-        openaiSpeedValue:   document.getElementById("openaiSpeedValue"),
-        openaiInstructionsRow: document.getElementById("openaiInstructionsRow"),
-        openaiInstructions: document.getElementById("openaiInstructions"),
         clonePanel:         document.getElementById("clonePanel"),
         cloneUploadBtn:     document.getElementById("cloneUploadBtn"),
         cloneClearBtn:      document.getElementById("cloneClearBtn"),
@@ -963,6 +1019,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         els.player.pause();
         els.player.removeAttribute("src");
         els.player.load();
+        tearDownPcmStream();
       }
 
       function failActivePlayback(message) {
@@ -979,7 +1036,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         return CATALOGS.find((p) => p.id === state.provider) || CATALOGS[0];
       }
       function activeProviderState() { return state[state.provider] || {}; }
-      function isOpenAI()   { return state.provider === "openai"; }
       function isMimo()     { return state.provider === "mimo"; }
       function isGemini()   { return state.provider === "gemini"; }
       function isQwen()     { return state.provider === "qwen"; }
@@ -1124,7 +1180,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
 
       function renderProviderBlocks() {
         // Toggle the per-provider blocks first, then their inner controls.
-        els.openaiBlock.classList.toggle("hidden",   !isOpenAI());
         els.geminiBlock.classList.toggle("hidden",   !isGemini());
         els.qwenBlock.classList.toggle("hidden",     !isQwen());
 
@@ -1162,31 +1217,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
           renderCloneStatus();
           renderTagGroups();
           renderPresetSelect();
-        }
-        if (isOpenAI()) {
-          const os = state.openai || {};
-          const model = os.model || "";
-          const showInstr = model === "gpt-4o-mini-tts";
-          els.openaiInstructionsRow.classList.toggle("hidden", !showInstr);
-          // Format select
-          if (els.openaiFormat.options.length === 0) {
-            for (const f of OPENAI_FORMATS) {
-              const o = document.createElement("option");
-              o.value = f.id;
-              o.textContent = f.label;
-              els.openaiFormat.appendChild(o);
-            }
-          }
-          if (els.openaiFormat.value !== (os.format || "mp3")) {
-            els.openaiFormat.value = os.format || "mp3";
-          }
-          // Speed slider
-          const speed = typeof os.speed === "number" ? os.speed : 1;
-          els.openaiSpeed.value = String(speed);
-          els.openaiSpeedValue.textContent = speed.toFixed(2) + "×";
-          // Instructions
-          const newInstr = os.instructions || "";
-          if (els.openaiInstructions.value !== newInstr) els.openaiInstructions.value = newInstr;
         }
         if (isGemini()) {
           const newPreamble = (state.gemini && state.gemini.stylePreamble) || "";
@@ -1507,33 +1537,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         vscode.postMessage({ type: "requestRead", text: pickTestPhrase() });
       });
 
-      // ---- OpenAI controls ----
-      els.openaiFormat.addEventListener("change", () => {
-        if (!state.openai) state.openai = {};
-        state.openai.format = els.openaiFormat.value;
-        vscode.postMessage({ type: "openaiFormatChanged", format: els.openaiFormat.value });
-      });
-      els.openaiSpeed.addEventListener("input", () => {
-        const speed = parseFloat(els.openaiSpeed.value);
-        if (!state.openai) state.openai = {};
-        state.openai.speed = speed;
-        els.openaiSpeedValue.textContent = speed.toFixed(2) + "×";
-        pendingOpenAISpeed = true;
-      });
-      els.openaiSpeed.addEventListener("change", () => {
-        const speed = parseFloat(els.openaiSpeed.value);
-        pendingOpenAISpeed = false;
-        vscode.postMessage({ type: "openaiSpeedChanged", speed: speed });
-      });
-      function commitOpenAIInstructions() {
-        const text = els.openaiInstructions.value;
-        if (!state.openai) state.openai = {};
-        if (state.openai.instructions === text) return;
-        state.openai.instructions = text;
-        vscode.postMessage({ type: "openaiInstructionsChanged", text: text });
-      }
-      els.openaiInstructions.addEventListener("change", commitOpenAIInstructions);
-      els.openaiInstructions.addEventListener("blur", commitOpenAIInstructions);
 
       // ---- Qwen controls ----
       els.qwenEndpoint.addEventListener("change", () => {
@@ -1670,21 +1673,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       els.geminiPreamble.addEventListener("change", commitGeminiPreamble);
       els.geminiPreamble.addEventListener("blur", commitGeminiPreamble);
 
-      function commitOpenAISpeed() {
-        if (!pendingOpenAISpeed) return;
-        const speed = parseFloat(els.openaiSpeed.value);
-        if (!state.openai) state.openai = {};
-        state.openai.speed = speed;
-        pendingOpenAISpeed = false;
-        vscode.postMessage({ type: "openaiSpeedChanged", speed: speed });
-      }
-
-
       function commitPendingProviderEdits() {
-        if (isOpenAI()) {
-          commitOpenAISpeed();
-          commitOpenAIInstructions();
-        }
         if (isMimo()) {
           const promptText = els.stylePrompt.value;
           if ((state.mimo && state.mimo.stylePrompt) !== promptText) {
@@ -1704,29 +1693,52 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       }
 
       // ---- speed / play / stop ----
+      function pcmStreamingActive() {
+        return audioCtx !== null && pcmActiveSources.size > 0;
+      }
       els.rate.addEventListener("input", () => {
         const rate = parseFloat(els.rate.value);
         state.playbackRate = rate;
         els.rateValue.textContent = rate.toFixed(2) + "×";
         els.player.playbackRate = rate;
+        // Apply to currently-scheduled WebAudio sources too (best effort —
+        // future sub-chunks pick up the new rate via state.playbackRate).
+        if (audioCtx) {
+          for (const src of pcmActiveSources) {
+            try { src.playbackRate.setValueAtTime(rate, audioCtx.currentTime); } catch (_) { /* ignore */ }
+          }
+        }
         vscode.postMessage({ type: "rateChanged", rate: rate });
       });
 
       els.primary.addEventListener("click", () => {
         if (mode === "synth") return;
         if (mode === "playing") {
-          els.player.pause();
+          if (pcmStreamingActive() && audioCtx) {
+            audioCtx.suspend().catch(() => {});
+          } else {
+            els.player.pause();
+          }
           setMode("paused");
           setStatus("Paused.", "muted");
           return;
         }
         if (mode === "paused") {
-          els.player.play().then(() => {
-            setMode("playing");
-            setStatus("Playing.", "info");
-          }).catch(function (err) {
-            setStatus("Resume failed: " + (err && err.message || err), "error");
-          });
+          if (pcmStreamingActive() && audioCtx) {
+            audioCtx.resume().then(() => {
+              setMode("playing");
+              setStatus("Playing.", "info");
+            }).catch((err) => {
+              setStatus("Resume failed: " + (err && err.message || err), "error");
+            });
+          } else {
+            els.player.play().then(() => {
+              setMode("playing");
+              setStatus("Playing.", "info");
+            }).catch(function (err) {
+              setStatus("Resume failed: " + (err && err.message || err), "error");
+            });
+          }
           return;
         }
         const text = els.text.value.trim();
@@ -1833,14 +1845,20 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
             break;
           case "playSubChunk":
             if (!activeSession || msg.sessionId !== activeSession.id) break;
-            queue.push({
-              ...msg,
-              isSubChunk: true,
-              chunkIndex: msg.isLast ? -1 : -2, // sentinel: trailing sub-chunk advances progress
-              totalChunks: activeSession.total,
-            });
-            if (els.player.paused && mode !== "paused") {
-              startNextChunk();
+            if (msg.format === "pcm") {
+              // WebAudio path: sample-accurate seamless playback.
+              enqueuePcmSubChunk(msg);
+            } else {
+              // Fallback for non-PCM streaming (none today, but keep the path).
+              queue.push({
+                ...msg,
+                isSubChunk: true,
+                chunkIndex: msg.isLast ? -1 : -2,
+                totalChunks: activeSession.total,
+              });
+              if (els.player.paused && mode !== "paused") {
+                startNextChunk();
+              }
             }
             break;
           case "chunkBoundary":
@@ -1895,7 +1913,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
 interface SerializedConfig {
   provider: ProviderId;
   playbackRate: number;
-  openai: { model: string; voice: string; format: string; instructions: string; speed: number };
   mimo: {
     model: string;
     voice: string;
@@ -1926,13 +1943,6 @@ function serializeConfig(cfg: AppConfig, cloneSample?: MiMoVoiceCloneSampleRecor
   return {
     provider: cfg.provider,
     playbackRate: cfg.playbackRate,
-    openai: {
-      model: cfg.openai.model,
-      voice: cfg.openai.voice,
-      format: cfg.openai.format,
-      instructions: cfg.openai.instructions,
-      speed: cfg.openai.speed,
-    },
     mimo: {
       model: cfg.mimo.model,
       voice: cfg.mimo.voice,

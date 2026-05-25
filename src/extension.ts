@@ -8,9 +8,6 @@ import {
   setMiMoStylePresets,
   setMiMoStylePrompt,
   setMiMoVoiceCloneSample,
-  setOpenAIFormat,
-  setOpenAIInstructions,
-  setOpenAISpeed,
   setProvider,
   setProviderModel,
   setProviderVoice,
@@ -202,15 +199,6 @@ export function activate(context: vscode.ExtensionContext): void {
         return;
       case "geminiInsertAudioTag":
         // Pure UI signal — handled inside the webview, no extension state change.
-        return;
-      case "openaiInstructionsChanged":
-        queueConfigUpdate(() => setOpenAIInstructions(msg.text));
-        return;
-      case "openaiFormatChanged":
-        queueConfigUpdate(() => setOpenAIFormat(msg.format));
-        return;
-      case "openaiSpeedChanged":
-        queueConfigUpdate(() => setOpenAISpeed(msg.speed));
         return;
       case "qwenEndpointChanged":
         queueConfigUpdate(() => setQwenEndpoint(msg.endpoint));
@@ -436,20 +424,6 @@ function buildProviderArgs(
 ): ProviderArgs | undefined {
   const catalog = CATALOGS[cfg.provider];
   switch (cfg.provider) {
-    case "openai": {
-      const voice = resolveVoiceId(catalog, cfg.openai.voice, cfg.openai.model);
-      if (!voice) return undefined;
-      return {
-        provider: "openai",
-        apiKey,
-        baseUrl: cfg.openai.baseUrl,
-        model: cfg.openai.model,
-        voice,
-        format: cfg.openai.format,
-        instructions: cfg.openai.instructions,
-        speed: cfg.openai.speed !== 1 ? cfg.openai.speed : undefined,
-      };
-    }
     case "mimo": {
       const voice = resolveVoiceId(catalog, cfg.mimo.voice, cfg.mimo.model);
       if (!voice) return undefined;
@@ -515,8 +489,6 @@ function describeVoice(cfg: AppConfig): string {
 
 function pickVoiceAndModel(cfg: AppConfig): { voiceId: string; model: string } {
   switch (cfg.provider) {
-    case "openai":
-      return { voiceId: cfg.openai.voice, model: cfg.openai.model };
     case "mimo":
       return { voiceId: cfg.mimo.voice, model: cfg.mimo.model };
     case "gemini":

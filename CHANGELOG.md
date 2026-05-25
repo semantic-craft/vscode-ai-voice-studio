@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.0 - 2026-05-25
+
+- Qwen-TTS now uses Server-Sent Events (`X-DashScope-SSE: enable`) under the
+  hood. Each PCM segment that DashScope emits is forwarded to the webview as
+  it arrives and wrapped as WAV for immediate playback. Expected first-audio
+  latency drops from ~1.5–3 s (full-segment HTTP) to ~0.3–0.8 s on typical
+  prose. (Other providers — OpenAI, MiMo, Gemini — keep the original
+  non-streaming path.)
+- Progress now advances on the trailing sub-chunk of each chunk-text segment,
+  so multi-chunk text still shows N/M progress while streaming sub-segments
+  inside each chunk.
+
 ## 0.8.1 - 2026-05-25
 
 - Build: `vscode:prepublish` now wipes `out/` before recompiling, so stale

@@ -10,6 +10,15 @@ export interface QwenSynthesizeArgs extends SynthesizeContext {
   voice: string;
   languageType: QwenLanguageType;
   instructions?: string;
+  /**
+   * If set, the request is sent with `X-DashScope-SSE: enable` and each
+   * inline base64 PCM segment is forwarded as soon as it arrives via
+   * `onSubChunk`. The resolved `SynthesizeResult.audioBase64` is empty when
+   * sub-chunks have already been delivered (the caller is expected to have
+   * played them); `format` is `"wav"` (we wrap PCM segments in WAV headers
+   * client-side).
+   */
+  onSubChunk?: (audioBase64: string, isLast: boolean) => void;
 }
 
 interface QwenAudio {
@@ -63,16 +72,23 @@ export async function synthesizeQwen(args: QwenSynthesizeArgs): Promise<Synthesi
   const onAbort = () => timeoutController.abort();
   args.signal?.addEventListener("abort", onAbort, { once: true });
 
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${args.apiKey}`,
+    "Content-Type": "application/json",
+  };
+  if (args.onSubChunk) headers["X-DashScope-SSE"] = "enable";
+
   try {
     const response = await fetch(ENDPOINT_URLS[args.endpoint], {
       method: "POST",
-      headers: {
-        Authorization: `Bearer ${args.apiKey}`,
-        "Content-Type": "application/json",
-      },
+      headers,
       body: JSON.stringify(body),
       signal: timeoutController.signal,
     });
+
+    if (args.onSubChunk) {
+      return await readStreamingResponse(response, args.onSubChunk, args.signal);
+    }
 
     const raw = await response.text();
     const payload = parseJson(raw);
@@ -117,6 +133,100 @@ export async function synthesizeQwen(args: QwenSynthesizeArgs): Promise<Synthesi
     clearTimeout(timeoutId);
     args.signal?.removeEventListener("abort", onAbort);
   }
+}
+
+async function readStreamingResponse(
+  response: Response,
+  onSubChunk: (audioBase64: string, isLast: boolean) => void,
+  externalSignal: AbortSignal | undefined,
+): Promise<SynthesizeResult> {
+  if (!response.ok) {
+    const raw = await response.text().catch(() => "");
+    const payload = parseJson(raw);
+    throw new TTSApiError(readErrorDetail(payload, raw, response), response.status);
+  }
+  if (!response.body) {
+    throw new TTSApiError("Qwen-TTS streaming response has no body.", -4);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let pendingSegments: string[] = [];
+  let sawFinish = false;
+  let firstErrorCode: number | undefined;
+  let firstErrorMessage: string | undefined;
+
+  const flushPendingExcept = (last: boolean): void => {
+    if (pendingSegments.length === 0) return;
+    const segments = pendingSegments;
+    pendingSegments = [];
+    const count = segments.length;
+    segments.forEach((seg, idx) => {
+      onSubChunk(seg, last && idx === count - 1);
+    });
+  };
+
+  try {
+    while (true) {
+      if (externalSignal?.aborted) {
+        throw new TTSApiError("TTS synthesis cancelled.", -7);
+      }
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+
+      let separator = buffer.indexOf("\n\n");
+      while (separator !== -1) {
+        const rawEvent = buffer.slice(0, separator);
+        buffer = buffer.slice(separator + 2);
+        separator = buffer.indexOf("\n\n");
+
+        const dataLines: string[] = [];
+        for (const line of rawEvent.split("\n")) {
+          if (line.startsWith("data:")) dataLines.push(line.slice(5).trimStart());
+        }
+        if (dataLines.length === 0) continue;
+        const payloadText = dataLines.join("");
+        if (!payloadText || payloadText === "[DONE]") continue;
+
+        let payload: QwenResponse;
+        try {
+          payload = JSON.parse(payloadText) as QwenResponse;
+        } catch {
+          continue;
+        }
+        if (payload.error || payload.code !== undefined) {
+          const code = payload.error?.code ?? payload.code;
+          firstErrorCode = normalizeErrorCode(code);
+          firstErrorMessage = payload.error?.message ?? payload.message ?? "Qwen-TTS streaming error.";
+          continue;
+        }
+        const audio = payload.output?.audio;
+        if (audio?.data) {
+          pendingSegments.push(normalizeBase64Audio(audio.data, "Qwen-TTS"));
+        }
+        if (payload.output?.finish_reason === "stop") {
+          sawFinish = true;
+        }
+      }
+    }
+  } finally {
+    try {
+      reader.releaseLock();
+    } catch {
+      // releaseLock can throw if the reader was already cancelled; ignore.
+    }
+  }
+
+  if (firstErrorMessage) {
+    throw new TTSApiError(firstErrorMessage, firstErrorCode ?? -6);
+  }
+  if (pendingSegments.length === 0) {
+    throw new TTSApiError(`No audio data returned from Qwen-TTS${sawFinish ? " (empty stream)" : ""}.`, -4);
+  }
+  flushPendingExcept(true);
+  return { audioBase64: "", format: "wav" };
 }
 
 async function downloadAudio(url: string, signal: AbortSignal): Promise<SynthesizeResult> {

@@ -1,5 +1,13 @@
 import { TTSApiError, type SynthesizeContext, type SynthesizeResult } from "./providers";
-import { ENDPOINT_URLS, supportsInstructions, type QwenEndpoint, type QwenLanguageType, type QwenTTSModel } from "./qwen-voices";
+import {
+  ENDPOINT_URLS,
+  isRealtimeModel,
+  supportsInstructions,
+  type QwenEndpoint,
+  type QwenLanguageType,
+  type QwenTTSModel,
+} from "./qwen-voices";
+import { synthesizeQwenRealtime } from "./qwen-tts-realtime";
 
 const REQUEST_TIMEOUT_MS = 90_000;
 const TTFB_TIMEOUT_MS = 15_000;
@@ -51,6 +59,27 @@ export async function synthesizeQwen(args: QwenSynthesizeArgs): Promise<Synthesi
   }
   if (args.signal?.aborted) {
     throw new TTSApiError("TTS synthesis cancelled.", -7);
+  }
+
+  // Realtime models go over WebSocket. They require streaming sub-chunks.
+  if (isRealtimeModel(args.model)) {
+    if (!args.onSubChunk) {
+      throw new TTSApiError(
+        `${args.model} requires streaming playback (onSubChunk). Pick a non-realtime model for buffered playback.`,
+        -1,
+      );
+    }
+    return synthesizeQwenRealtime({
+      text,
+      signal: args.signal,
+      apiKey: args.apiKey,
+      endpoint: args.endpoint,
+      model: args.model,
+      voice: args.voice,
+      languageType: args.languageType,
+      instructions: args.instructions,
+      onSubChunk: args.onSubChunk,
+    });
   }
 
   const input: Record<string, unknown> = {

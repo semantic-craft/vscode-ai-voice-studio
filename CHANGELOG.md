@@ -1,19 +1,6 @@
 # Changelog
 
-## 0.7.0 - 2026-05-25
-
-- Converted the extension into a focused Qwen-TTS Studio.
-- Removed all non-Qwen TTS surfaces, settings, source files, and tests.
-- Removed the hidden compatibility mapping for old local configuration so the
-  extension now uses Qwen settings directly.
-- Kept DashScope / Alibaba Cloud key routing through
-  `DASHSCOPE_API_KEY` and `aiVoiceStudio.qwen.dashscopeApiKey`.
-- Kept chunked playback, cancellation, timeout handling, test voice, quick read,
-  speed control, stop reading, and sidebar status/progress.
-- Hardened `output.audio.data` playback by sniffing container bytes only when
-  Qwen does not provide an explicit audio format hint.
-
-### UX fixes
+## 0.7.1 - 2026-05-25
 
 - Sidebar no longer clobbers the Instructions textarea while the user is
   actively typing in it; an external config refresh now preserves in-progress
@@ -32,6 +19,19 @@
   correctly.
 - Default `waitUntilReady` timeout bumped from 3s to 5s to better cover
   cold-activation on slower systems.
+
+## 0.7.0 - 2026-05-25
+
+- Converted the extension into a focused Qwen-TTS Studio.
+- Removed all non-Qwen TTS surfaces, settings, source files, and tests.
+- Removed the hidden compatibility mapping for old local configuration so the
+  extension now uses Qwen settings directly.
+- Kept DashScope / Alibaba Cloud key routing through
+  `DASHSCOPE_API_KEY` and `aiVoiceStudio.qwen.dashscopeApiKey`.
+- Kept chunked playback, cancellation, timeout handling, test voice, quick read,
+  speed control, stop reading, and sidebar status/progress.
+- Hardened `output.audio.data` playback by sniffing container bytes only when
+  Qwen does not provide an explicit audio format hint.
 
 ## 0.6.1
 

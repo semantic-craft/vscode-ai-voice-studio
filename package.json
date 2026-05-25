@@ -2,7 +2,7 @@
   "name": "ai-voice-studio",
   "displayName": "Qwen TTS Studio",
   "description": "Read text aloud in VS Code with Alibaba Cloud Qwen-TTS via DashScope.",
-  "version": "0.7.0",
+  "version": "0.7.1",
   "publisher": "xianwei-zhang",
   "license": "MIT",
   "icon": "media/icon.png",

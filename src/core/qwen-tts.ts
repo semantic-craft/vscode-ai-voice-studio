@@ -1,4 +1,4 @@
-import { TTSApiError, type SynthesizeContext, type SynthesizeResult } from "./types";
+import { TTSApiError, type SynthesizeContext, type SynthesizeResult } from "./providers";
 import { ENDPOINT_URLS, supportsInstructions, type QwenEndpoint, type QwenLanguageType, type QwenTTSModel } from "./qwen-voices";
 
 const REQUEST_TIMEOUT_MS = 90_000;

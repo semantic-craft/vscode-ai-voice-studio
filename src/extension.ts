@@ -1,24 +1,39 @@
 import * as vscode from "vscode";
 import {
   getConfig,
+  getMiMoVoiceCloneSample,
+  setGeminiStylePreamble,
+  setMiMoAudioEventTags,
+  setMiMoOpeningStyleTags,
+  setMiMoStylePresets,
+  setMiMoStylePrompt,
+  setMiMoVoiceCloneSample,
+  setOpenAIFormat,
+  setOpenAIInstructions,
+  setOpenAISpeed,
+  setProvider,
+  setProviderModel,
+  setProviderVoice,
   setQwenEndpoint,
   setQwenInstructions,
   setQwenLanguageType,
-  setQwenModel,
-  setQwenVoice,
   type AppConfig,
+  type MiMoStylePreset,
 } from "./config";
-import { runPlaybackSession } from "./core/playback-session";
-import { synthesizeQwen, type QwenSynthesizeArgs } from "./core/qwen-tts";
-import { QWEN_CATALOG } from "./core/qwen-voices";
 import {
+  PROVIDER_IDS,
+  PROVIDER_LABELS,
   TTSApiError,
+  isProviderId,
+  isVoiceAvailableForModel,
   getVoiceById,
   getVoicesForModel,
-  isVoiceAvailableForModel,
-  type SynthesizeContext,
-} from "./core/types";
+  type ProviderCatalog,
+  type ProviderId,
+} from "./core/providers";
+import { CATALOGS, synthesize, type ProviderArgs } from "./core/synthesize";
 import { chunkText } from "./core/text-chunker";
+import { runPlaybackSession } from "./core/playback-session";
 import { SecretsStore } from "./secrets";
 import { VoiceStudioViewProvider } from "./webview-view-provider";
 
@@ -68,23 +83,23 @@ class StatusBar {
   set(mode: StatusBarMode): void {
     switch (mode.kind) {
       case "idle":
-        this.item.text = "$(unmute) Qwen TTS";
-        this.item.tooltip = "Qwen TTS Studio - click to open the sidebar.";
+        this.item.text = "$(unmute) Voice Studio";
+        this.item.tooltip = "AI Voice Studio — click to open the sidebar.";
         break;
       case "synth":
-        this.item.text = "$(loading~spin) Synthesizing...";
-        this.item.tooltip = "Qwen TTS Studio - synthesizing audio.";
+        this.item.text = "$(loading~spin) Synthesizing…";
+        this.item.tooltip = "AI Voice Studio — synthesizing audio.";
         break;
       case "playing":
         this.item.text =
           mode.total > 1
-            ? `$(record) Qwen ${mode.index}/${mode.total}`
-            : "$(record) Qwen";
-        this.item.tooltip = "Qwen TTS Studio - playing.";
+            ? `$(record) Voice ${mode.index}/${mode.total}`
+            : "$(record) Voice";
+        this.item.tooltip = "AI Voice Studio — playing.";
         break;
       case "error":
-        this.item.text = "$(error) Qwen TTS";
-        this.item.tooltip = "Qwen TTS Studio - last action failed.";
+        this.item.text = "$(error) Voice Studio";
+        this.item.tooltip = "AI Voice Studio — last action failed.";
         break;
     }
   }
@@ -94,24 +109,22 @@ class StatusBar {
   }
 }
 
-type QwenPlaybackArgs = Omit<QwenSynthesizeArgs, keyof SynthesizeContext>;
-
 export function activate(context: vscode.ExtensionContext): void {
-  const viewProvider = new VoiceStudioViewProvider(context.extensionUri);
+  const provider = new VoiceStudioViewProvider(context.extensionUri);
   const secrets = new SecretsStore(context.secrets);
   const playback = new PlaybackController();
   const statusBar = new StatusBar();
 
   context.subscriptions.push(
     statusBar,
-    vscode.window.registerWebviewViewProvider(VoiceStudioViewProvider.viewType, viewProvider, {
+    vscode.window.registerWebviewViewProvider(VoiceStudioViewProvider.viewType, provider, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
   );
 
   const refreshConfig = (): void => {
-    if (!viewProvider.isReady()) return;
-    viewProvider.postConfig(getConfig());
+    if (!provider.isReady()) return;
+    provider.postConfig(getConfig(), getMiMoVoiceCloneSample(context.globalState));
   };
   let configUpdateChain: Promise<void> = Promise.resolve();
   const queueConfigUpdate = (update: () => Promise<void>, shouldRefresh = false): void => {
@@ -122,31 +135,82 @@ export function activate(context: vscode.ExtensionContext): void {
       })
       .catch((err) => {
         statusBar.set({ kind: "error" });
-        handleError(err, viewProvider);
+        handleError(err, provider);
       });
   };
 
-  viewProvider.setMessageHandler((msg) => {
+  provider.setMessageHandler((msg) => {
     switch (msg.type) {
       case "ready":
         refreshConfig();
         return;
       case "requestRead":
-        void readText(msg.text, "Sidebar");
+        void readText(msg.text, "Webview");
         return;
       case "requestStop":
         playback.abort();
-        viewProvider.postStop();
         statusBar.set({ kind: "idle" });
         return;
       case "requestSetKey":
         void vscode.commands.executeCommand("aiVoiceStudio.setApiKey");
         return;
+      case "providerChanged":
+        queueConfigUpdate(() => setProvider(msg.provider), true);
+        return;
       case "voiceChanged":
-        queueConfigUpdate(() => setQwenVoice(msg.voice));
+        queueConfigUpdate(() => setProviderVoice(msg.provider, msg.voice));
         return;
       case "modelChanged":
-        queueConfigUpdate(() => applyModelChange(msg.model, msg.voice), true);
+        queueConfigUpdate(() => applyModelChange(msg.provider, msg.model, msg.voice), true);
+        return;
+      case "mimoStyleTagsChanged":
+        queueConfigUpdate(() => setMiMoOpeningStyleTags(msg.tags));
+        return;
+      case "mimoAudioEventTagsChanged":
+        queueConfigUpdate(() => setMiMoAudioEventTags(msg.tags));
+        return;
+      case "mimoStylePromptChanged":
+        queueConfigUpdate(() => setMiMoStylePrompt(msg.text));
+        return;
+      case "mimoVoiceCloneSampleSet":
+        queueConfigUpdate(
+          () =>
+            setMiMoVoiceCloneSample(context.globalState, {
+              dataUrl: msg.dataUrl,
+              mime: msg.mime,
+              fileName: msg.fileName,
+              sizeBytes: msg.sizeBytes,
+              storedAt: Date.now(),
+            }),
+          true,
+        );
+        return;
+      case "mimoVoiceCloneSampleClear":
+        queueConfigUpdate(() => setMiMoVoiceCloneSample(context.globalState, undefined), true);
+        return;
+      case "mimoPresetSave":
+        queueConfigUpdate(() => applyPresetSave(msg.preset), true);
+        return;
+      case "mimoPresetApply":
+        queueConfigUpdate(() => applyPresetByName(msg.name), true);
+        return;
+      case "mimoPresetDelete":
+        queueConfigUpdate(() => applyPresetDelete(msg.name), true);
+        return;
+      case "geminiStylePreambleChanged":
+        queueConfigUpdate(() => setGeminiStylePreamble(msg.text));
+        return;
+      case "geminiInsertAudioTag":
+        // Pure UI signal — handled inside the webview, no extension state change.
+        return;
+      case "openaiInstructionsChanged":
+        queueConfigUpdate(() => setOpenAIInstructions(msg.text));
+        return;
+      case "openaiFormatChanged":
+        queueConfigUpdate(() => setOpenAIFormat(msg.format));
+        return;
+      case "openaiSpeedChanged":
+        queueConfigUpdate(() => setOpenAISpeed(msg.speed));
         return;
       case "qwenEndpointChanged":
         queueConfigUpdate(() => setQwenEndpoint(msg.endpoint));
@@ -165,31 +229,35 @@ export function activate(context: vscode.ExtensionContext): void {
     try {
       const trimmed = text.trim();
       if (!trimmed) {
-        vscode.window.showWarningMessage("Qwen TTS Studio: nothing to read.");
+        vscode.window.showWarningMessage("AI Voice Studio: nothing to read.");
         return;
       }
       await configUpdateChain;
 
       const cfg = getConfig();
-      const apiKey = await secrets.ensure();
+      const apiKey = await secrets.ensure(cfg.provider);
       if (!apiKey) {
-        viewProvider.postStatus("DashScope API key not set.", "error", { id: "requestSetKey", label: "Set API Key" });
+        provider.postStatus(
+          `${PROVIDER_LABELS[cfg.provider]} API key not set.`,
+          "error",
+          { id: "requestSetKey", label: "Set API Key" },
+        );
         statusBar.set({ kind: "error" });
         return;
       }
 
-      const args = buildQwenArgs(cfg, apiKey);
+      const args = buildProviderArgs(cfg, apiKey, context);
       if (!args) {
-        viewProvider.postStatus("Invalid Qwen voice/model selection.", "error");
+        provider.postStatus(`Invalid voice/model for ${PROVIDER_LABELS[cfg.provider]}.`, "error");
         statusBar.set({ kind: "error" });
         return;
       }
 
       const voiceLabel = describeVoice(cfg);
-      await viewProvider.reveal();
-      if (!(await viewProvider.waitUntilReady())) {
-        const message = "Qwen TTS Studio: sidebar is still loading. Try again in a moment.";
-        viewProvider.postStatus(message, "warn");
+      await provider.reveal();
+      if (!(await provider.waitUntilReady())) {
+        const message = "AI Voice Studio: sidebar is still loading. Try again in a moment.";
+        provider.postStatus(message, "warn");
         void vscode.window.showWarningMessage(message);
         statusBar.set({ kind: "idle" });
         return;
@@ -202,41 +270,40 @@ export function activate(context: vscode.ExtensionContext): void {
       const signal = session.signal;
       const currentSessionId = session.sessionId;
       sessionId = currentSessionId;
-      viewProvider.postSessionStart(currentSessionId, chunks.length);
+      provider.postSessionStart(currentSessionId, chunks.length);
       statusBar.set({ kind: "synth" });
-      viewProvider.postStatus(
+      provider.postStatus(
         chunks.length === 1
-          ? `Synthesizing with Qwen-TTS - ${voiceLabel}...`
-          : `Synthesizing ${chunks.length} chunks with Qwen-TTS - ${voiceLabel}...`,
+          ? `Synthesizing with ${PROVIDER_LABELS[cfg.provider]} · ${voiceLabel}…`
+          : `Synthesizing ${chunks.length} chunks with ${PROVIDER_LABELS[cfg.provider]} · ${voiceLabel}…`,
       );
 
       const result = await runPlaybackSession(
         chunks,
-        (chunk, chunkSignal) => synthesizeQwen({ text: chunk, signal: chunkSignal, ...args }),
+        (chunkText, chunkSignal) => synthesize({ text: chunkText, signal: chunkSignal }, args),
         ({ index, total, result: out }) => {
           if (!playback.isCurrent(currentSessionId)) return;
           const label =
             total > 1
-              ? `${source} - ${voiceLabel} - ${index + 1}/${total}`
-              : `${source} - ${voiceLabel}`;
-          viewProvider.postPlay(currentSessionId, index, total, out.audioBase64, out.format, cfg.playbackRate, label);
+              ? `${source} · ${voiceLabel} · ${index + 1}/${total}`
+              : `${source} · ${voiceLabel}`;
+          provider.postPlay(currentSessionId, index, total, out.audioBase64, out.format, cfg.playbackRate, label);
           statusBar.set({ kind: "playing", index: index + 1, total });
         },
         signal,
       );
-
       if (!playback.isCurrent(currentSessionId)) return;
-      viewProvider.postSessionEnd(currentSessionId, result.cancelled);
+      provider.postSessionEnd(currentSessionId, result.cancelled);
       playback.complete(currentSessionId);
       statusBar.set({ kind: "idle" });
     } catch (err) {
       if (sessionId !== undefined) {
         if (!playback.isCurrent(sessionId)) return;
         playback.abort();
-        viewProvider.postSessionEnd(sessionId, true);
+        provider.postSessionEnd(sessionId, true);
       }
       statusBar.set({ kind: "error" });
-      handleError(err, viewProvider);
+      handleError(err, provider);
     }
   }
 
@@ -245,7 +312,7 @@ export function activate(context: vscode.ExtensionContext): void {
       const text = await resolveTextToRead();
       if (!text) {
         vscode.window.showInformationMessage(
-          "Qwen TTS Studio: select text in the editor or copy text to the clipboard first.",
+          "AI Voice Studio: select text in the editor or copy text to the clipboard first.",
         );
         return;
       }
@@ -253,29 +320,32 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
     vscode.commands.registerCommand("aiVoiceStudio.stop", () => {
       playback.abort();
-      viewProvider.postStop();
+      provider.postStop();
       statusBar.set({ kind: "idle" });
     }),
     vscode.commands.registerCommand("aiVoiceStudio.setApiKey", async () => {
+      const choice = await pickProvider("Set API key for…");
+      if (!choice) return;
       const value = await vscode.window.showInputBox({
-        title: "DashScope API key",
+        title: `${PROVIDER_LABELS[choice]} API key`,
         prompt: "Stored in VS Code SecretStorage. Leave empty to cancel.",
         password: true,
         ignoreFocusOut: true,
-        placeHolder: "DASHSCOPE_API_KEY / sk-...",
         validateInput: (input) => (input.trim().length === 0 ? "API key cannot be empty." : null),
       });
       const trimmed = value?.trim();
       if (!trimmed) return;
-      await secrets.set(trimmed);
-      vscode.window.showInformationMessage("Qwen TTS Studio: DashScope API key saved.");
-      if (viewProvider.isReady()) {
-        viewProvider.postStatus("DashScope API key saved.", "info");
+      await secrets.set(choice, trimmed);
+      vscode.window.showInformationMessage(`AI Voice Studio: ${PROVIDER_LABELS[choice]} API key saved.`);
+      if (provider.isReady()) {
+        provider.postStatus(`${PROVIDER_LABELS[choice]} API key saved.`, "info");
       }
     }),
     vscode.commands.registerCommand("aiVoiceStudio.clearApiKey", async () => {
-      await secrets.clear();
-      vscode.window.showInformationMessage("Qwen TTS Studio: DashScope API key cleared.");
+      const choice = await pickProvider("Clear API key for…");
+      if (!choice) return;
+      await secrets.clear(choice);
+      vscode.window.showInformationMessage(`AI Voice Studio: ${PROVIDER_LABELS[choice]} API key cleared.`);
     }),
     vscode.commands.registerCommand("aiVoiceStudio.focusView", () => {
       vscode.commands.executeCommand("aiVoiceStudio.studio.focus");
@@ -295,10 +365,16 @@ export function deactivate(): void {
   // no-op
 }
 
-async function applyModelChange(model: string, voice: string | undefined): Promise<void> {
-  await setQwenModel(model);
+async function pickProvider(title: string): Promise<ProviderId | undefined> {
+  const items = PROVIDER_IDS.map((id) => ({ label: PROVIDER_LABELS[id], id }));
+  const picked = await vscode.window.showQuickPick(items, { title, ignoreFocusOut: true });
+  return picked && isProviderId(picked.id) ? picked.id : undefined;
+}
+
+async function applyModelChange(provider: ProviderId, model: string, voice: string | undefined): Promise<void> {
+  await setProviderModel(provider, model);
   if (voice?.trim()) {
-    await setQwenVoice(voice.trim());
+    await setProviderVoice(provider, voice.trim());
   }
 }
 
@@ -316,42 +392,148 @@ async function resolveTextToRead(): Promise<string | undefined> {
   return undefined;
 }
 
-function buildQwenArgs(cfg: AppConfig, apiKey: string): QwenPlaybackArgs | undefined {
-  const voice = resolveVoiceId(cfg.qwen.voice, cfg.qwen.model);
-  if (!voice) return undefined;
-  return {
-    apiKey,
-    endpoint: cfg.qwen.endpoint,
-    model: cfg.qwen.model,
-    voice,
-    languageType: cfg.qwen.languageType,
-    instructions: cfg.qwen.instructions,
-  };
+function buildProviderArgs(
+  cfg: AppConfig,
+  apiKey: string,
+  context: vscode.ExtensionContext,
+): ProviderArgs | undefined {
+  const catalog = CATALOGS[cfg.provider];
+  switch (cfg.provider) {
+    case "openai": {
+      const voice = resolveVoiceId(catalog, cfg.openai.voice, cfg.openai.model);
+      if (!voice) return undefined;
+      return {
+        provider: "openai",
+        apiKey,
+        baseUrl: cfg.openai.baseUrl,
+        model: cfg.openai.model,
+        voice,
+        format: cfg.openai.format,
+        instructions: cfg.openai.instructions,
+        speed: cfg.openai.speed !== 1 ? cfg.openai.speed : undefined,
+      };
+    }
+    case "mimo": {
+      const voice = resolveVoiceId(catalog, cfg.mimo.voice, cfg.mimo.model);
+      if (!voice) return undefined;
+      const cloneRecord = getMiMoVoiceCloneSample(context.globalState);
+      const voiceCloneSample = cloneRecord
+        ? { dataUrl: cloneRecord.dataUrl, sizeBytes: cloneRecord.sizeBytes }
+        : undefined;
+      return {
+        provider: "mimo",
+        apiKey,
+        baseUrl: cfg.mimo.baseUrl,
+        model: cfg.mimo.model,
+        voice,
+        format: cfg.mimo.format,
+        stylePrompt: cfg.mimo.stylePrompt || undefined,
+        openingStyleTags: cfg.mimo.openingStyleTags.length ? cfg.mimo.openingStyleTags : undefined,
+        audioEventTags: cfg.mimo.audioEventTags.length ? cfg.mimo.audioEventTags : undefined,
+        voiceCloneSample,
+      };
+    }
+    case "gemini": {
+      const voice = resolveVoiceId(catalog, cfg.gemini.voice, cfg.gemini.model);
+      if (!voice) return undefined;
+      return {
+        provider: "gemini",
+        apiKey,
+        baseUrl: cfg.gemini.baseUrl,
+        model: cfg.gemini.model,
+        voice,
+        format: "wav",
+        stylePreamble: cfg.gemini.stylePreamble || undefined,
+      };
+    }
+    case "qwen": {
+      const voice = resolveVoiceId(catalog, cfg.qwen.voice, cfg.qwen.model);
+      if (!voice) return undefined;
+      return {
+        provider: "qwen",
+        apiKey,
+        endpoint: cfg.qwen.endpoint,
+        model: cfg.qwen.model,
+        voice,
+        languageType: cfg.qwen.languageType,
+        instructions: cfg.qwen.instructions || undefined,
+      };
+    }
+  }
 }
 
-function resolveVoiceId(voiceId: string, model: string): string | undefined {
-  const voice = getVoiceById(QWEN_CATALOG, voiceId);
+function resolveVoiceId(catalog: ProviderCatalog, voiceId: string, model: string): string | undefined {
+  const voice = getVoiceById(catalog, voiceId);
   if (voice && isVoiceAvailableForModel(voice, model)) return voice.id;
-  return getVoicesForModel(QWEN_CATALOG, model)[0]?.id;
+  return getVoicesForModel(catalog, model)[0]?.id;
 }
 
 function describeVoice(cfg: AppConfig): string {
-  const resolved = resolveVoiceId(cfg.qwen.voice, cfg.qwen.model);
-  const voice = resolved ? getVoiceById(QWEN_CATALOG, resolved) : undefined;
-  return voice?.name ?? resolved ?? cfg.qwen.voice;
+  const catalog = CATALOGS[cfg.provider];
+  const { voiceId, model } = pickVoiceAndModel(cfg);
+  const resolved = resolveVoiceId(catalog, voiceId, model);
+  const voice = resolved ? getVoiceById(catalog, resolved) : undefined;
+  return voice?.name ?? resolved ?? voiceId;
 }
 
-function handleError(err: unknown, viewProvider: VoiceStudioViewProvider): void {
+function pickVoiceAndModel(cfg: AppConfig): { voiceId: string; model: string } {
+  switch (cfg.provider) {
+    case "openai":
+      return { voiceId: cfg.openai.voice, model: cfg.openai.model };
+    case "mimo":
+      return { voiceId: cfg.mimo.voice, model: cfg.mimo.model };
+    case "gemini":
+      return { voiceId: cfg.gemini.voice, model: cfg.gemini.model };
+    case "qwen":
+      return { voiceId: cfg.qwen.voice, model: cfg.qwen.model };
+  }
+}
+
+async function applyPresetSave(preset: MiMoStylePreset): Promise<void> {
+  const cfg = getConfig();
+  const filtered = cfg.mimo.stylePresets.filter((p) => p.name !== preset.name);
+  filtered.push({
+    name: preset.name,
+    stylePrompt: preset.stylePrompt ?? "",
+    openingStyleTags: Array.isArray(preset.openingStyleTags) ? preset.openingStyleTags : [],
+    audioEventTags: Array.isArray(preset.audioEventTags) ? preset.audioEventTags : [],
+  });
+  await setMiMoStylePresets(filtered);
+}
+
+async function applyPresetApply(preset: MiMoStylePreset): Promise<void> {
+  await Promise.all([
+    setMiMoStylePrompt(preset.stylePrompt ?? ""),
+    setMiMoOpeningStyleTags(preset.openingStyleTags ?? []),
+    setMiMoAudioEventTags(preset.audioEventTags ?? []),
+  ]);
+}
+
+async function applyPresetByName(name: string): Promise<void> {
+  const cfg = getConfig();
+  const found = cfg.mimo.stylePresets.find((p) => p.name === name);
+  if (!found) return;
+  await applyPresetApply(found);
+}
+
+async function applyPresetDelete(name: string): Promise<void> {
+  const cfg = getConfig();
+  const filtered = cfg.mimo.stylePresets.filter((p) => p.name !== name);
+  if (filtered.length === cfg.mimo.stylePresets.length) return;
+  await setMiMoStylePresets(filtered);
+}
+
+function handleError(err: unknown, provider: VoiceStudioViewProvider): void {
   if (err instanceof TTSApiError) {
     if (err.code === -7) {
-      viewProvider.postStatus("Cancelled.", "muted");
+      provider.postStatus("Cancelled.", "muted");
       return;
     }
-    viewProvider.postStatus(err.message, "error");
-    vscode.window.showErrorMessage(`Qwen TTS Studio: ${err.message}`);
+    provider.postStatus(err.message, "error");
+    vscode.window.showErrorMessage(`AI Voice Studio: ${err.message}`);
     return;
   }
   const message = err instanceof Error ? err.message : String(err);
-  viewProvider.postStatus(message, "error");
-  vscode.window.showErrorMessage(`Qwen TTS Studio: ${message}`);
+  provider.postStatus(message, "error");
+  vscode.window.showErrorMessage(`AI Voice Studio: ${message}`);
 }

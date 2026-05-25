@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.8.0 - 2026-05-25
+
+- Restored multi-provider support after the Qwen-only refactor. The sidebar
+  again exposes a provider switcher with four providers:
+  - **OpenAI** (`gpt-4o-mini-tts`, `tts-1`, `tts-1-hd`) with format / speed /
+    instructions / custom base URL.
+  - **MiMo** Token Plan (preset, voicedesign, voiceclone, legacy v2) with
+    style prompt, opening-style tags, audio-event tags, saved style presets,
+    and voice-clone uploader.
+  - **Google Gemini** (Gemini 3.1 / 2.5 flash & pro TTS preview) with style
+    preamble and audio-tag chips.
+  - **Alibaba Qwen** (`qwen3-tts-flash`, `qwen3-tts-instruct-flash`) with
+    DashScope endpoint, `language_type`, and instruct-only instructions.
+- Removed the MiniMax provider that shipped in 0.6.1; the rest of the
+  multi-provider surface is otherwise compatible with 0.6.1 configurations.
+- API keys are stored per provider in VS Code SecretStorage. Environment
+  variable fallbacks: `OPENAI_API_KEY`, `GEMINI_API_KEY` / `GOOGLE_API_KEY`,
+  `DASHSCOPE_API_KEY`.
+- Carried over the 0.7.1 UX fixes:
+  - Qwen Instructions textarea no longer clobbers in-progress edits during
+    external config refreshes.
+  - Test-Voice button uses a language-appropriate sample phrase for Qwen.
+  - Audio sniffer distinguishes AAC ADTS from MP3 sync frames.
+  - `Set API Key…` rejects whitespace-only input.
+  - Text chunker prefers commas / whitespace breaks before hard-splitting.
+  - `waitUntilReady` default bumped from 3s to 5s.
+
 ## 0.7.1 - 2026-05-25
 
 - Sidebar no longer clobbers the Instructions textarea while the user is

@@ -100,6 +100,66 @@ test("Qwen-TTS data response trusts explicit audio format over sniffing", async 
   }
 });
 
+test("Qwen-TTS SSE streaming emits each segment incrementally, not all at once", async () => {
+  const seg1 = Buffer.from([1, 2, 3]).toString("base64");
+  const seg2 = Buffer.from([4, 5, 6]).toString("base64");
+  const seg3 = Buffer.from([7, 8, 9]).toString("base64");
+
+  let controller;
+  const stream = new ReadableStream({
+    start(c) { controller = c; },
+  });
+  const encoder = new TextEncoder();
+
+  const restore = mockFetch(async () =>
+    new Response(stream, {
+      status: 200,
+      headers: { "content-type": "text/event-stream" },
+    }),
+  );
+
+  const emits = [];
+  try {
+    const promise = synthesizeQwen({
+      text: "test",
+      apiKey: "sk-test",
+      endpoint: "china",
+      model: "qwen3-tts-flash",
+      voice: "Cherry",
+      languageType: "Chinese",
+      onSubChunk: (audioBase64, isLast) => {
+        emits.push({ audioBase64, isLast });
+      },
+    });
+
+    // Feed seg1, wait for the parser to consume it. One-ahead buffering means
+    // nothing should be emitted yet.
+    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ output: { audio: { data: seg1 } } })}\n\n`));
+    await new Promise((r) => setTimeout(r, 30));
+    assert.equal(emits.length, 0, "should not emit before the next segment arrives");
+
+    // Feed seg2: now seg1 must have been emitted with isLast=false.
+    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ output: { audio: { data: seg2 } } })}\n\n`));
+    await new Promise((r) => setTimeout(r, 30));
+    assert.equal(emits.length, 1);
+    assert.equal(emits[0].audioBase64, seg1);
+    assert.equal(emits[0].isLast, false);
+
+    // Final segment + finish_reason: stop. Closes the stream.
+    controller.enqueue(encoder.encode(`data: ${JSON.stringify({ output: { audio: { data: seg3 }, finish_reason: "stop" } })}\n\n`));
+    controller.close();
+
+    const result = await promise;
+    assert.equal(emits.length, 3);
+    assert.equal(emits[2].audioBase64, seg3);
+    assert.equal(emits[2].isLast, true);
+    assert.equal(result.audioBase64, "");
+    assert.equal(result.format, "wav");
+  } finally {
+    restore();
+  }
+});
+
 test("Qwen-TTS SSE streaming forwards each PCM segment and marks the last one", async () => {
   const seg1 = Buffer.from([1, 2, 3]).toString("base64");
   const seg2 = Buffer.from([4, 5, 6]).toString("base64");

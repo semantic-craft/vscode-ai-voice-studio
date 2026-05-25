@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.9.1 - 2026-05-25
+
+- Fix(Qwen SSE): the previous 0.9.0 streaming reader buffered every PCM
+  segment until the response finished, which silently regressed to
+  non-streaming latency in production (the unit test masked it because the
+  mock `Response` delivered the body in one read). The parser now uses a
+  one-ahead buffer and emits each segment as soon as the next one arrives,
+  tagging only the final segment with `isLast=true`. Live measurement against
+  DashScope confirms first audio segment ~440–510 ms (versus ~1.0–1.4 s for
+  the non-streaming URL path).
+- Add a regression test that feeds SSE events through a real `ReadableStream`
+  controller and asserts the emit happens between segments, not at the end.
+
 ## 0.9.0 - 2026-05-25
 
 - Qwen-TTS now uses Server-Sent Events (`X-DashScope-SSE: enable`) under the

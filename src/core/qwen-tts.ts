@@ -152,20 +152,14 @@ async function readStreamingResponse(
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let pendingSegments: string[] = [];
+  // One-ahead buffer: we keep the most recent segment so we can correctly tag
+  // it as `isLast=true` once the stream ends. Earlier segments are emitted as
+  // soon as the next segment arrives — that's what makes this true streaming.
+  let pendingSegment: string | null = null;
+  let emittedAny = false;
   let sawFinish = false;
   let firstErrorCode: number | undefined;
   let firstErrorMessage: string | undefined;
-
-  const flushPendingExcept = (last: boolean): void => {
-    if (pendingSegments.length === 0) return;
-    const segments = pendingSegments;
-    pendingSegments = [];
-    const count = segments.length;
-    segments.forEach((seg, idx) => {
-      onSubChunk(seg, last && idx === count - 1);
-    });
-  };
 
   try {
     while (true) {
@@ -204,7 +198,12 @@ async function readStreamingResponse(
         }
         const audio = payload.output?.audio;
         if (audio?.data) {
-          pendingSegments.push(normalizeBase64Audio(audio.data, "Qwen-TTS"));
+          const seg = normalizeBase64Audio(audio.data, "Qwen-TTS");
+          if (pendingSegment !== null) {
+            onSubChunk(pendingSegment, false);
+            emittedAny = true;
+          }
+          pendingSegment = seg;
         }
         if (payload.output?.finish_reason === "stop") {
           sawFinish = true;
@@ -222,10 +221,12 @@ async function readStreamingResponse(
   if (firstErrorMessage) {
     throw new TTSApiError(firstErrorMessage, firstErrorCode ?? -6);
   }
-  if (pendingSegments.length === 0) {
+  if (pendingSegment === null && !emittedAny) {
     throw new TTSApiError(`No audio data returned from Qwen-TTS${sawFinish ? " (empty stream)" : ""}.`, -4);
   }
-  flushPendingExcept(true);
+  if (pendingSegment !== null) {
+    onSubChunk(pendingSegment, true);
+  }
   return { audioBase64: "", format: "wav" };
 }
 

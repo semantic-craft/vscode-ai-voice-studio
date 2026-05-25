@@ -2,7 +2,7 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 
 const { runPlaybackSession } = require("../out/core/playback-session.js");
-const { TTSApiError } = require("../out/core/providers.js");
+const { TTSApiError } = require("../out/core/types.js");
 
 function deferred() {
   let resolve;
@@ -44,7 +44,7 @@ test("playback session prefetches the next chunk before emitting the current one
   assert.equal(emitted.length, 2);
 });
 
-test("playback session reports provider aborts as cancellation", async () => {
+test("playback session reports TTS aborts as cancellation", async () => {
   const result = await runPlaybackSession(
     ["only"],
     async () => {

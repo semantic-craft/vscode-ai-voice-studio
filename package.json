@@ -2,7 +2,7 @@
   "name": "ai-voice-studio",
   "displayName": "AI Voice Studio",
   "description": "Read text aloud in VS Code with OpenAI, MiMo, Google Gemini, and Alibaba Qwen TTS — voices, voice clone, emotion tags, and director mode from the sidebar.",
-  "version": "0.8.0",
+  "version": "0.8.1",
   "publisher": "xianwei-zhang",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -319,7 +319,8 @@
     }
   },
   "scripts": {
-    "vscode:prepublish": "npm run compile",
+    "clean": "node -e \"require('fs').rmSync('out',{recursive:true,force:true})\"",
+    "vscode:prepublish": "npm run clean && npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "lint": "tsc -p ./ --noEmit",

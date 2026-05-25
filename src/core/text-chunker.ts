@@ -6,6 +6,7 @@ export interface ChunkerOptions {
 const DEFAULT_OPTIONS: ChunkerOptions = { maxChars: 250, minChars: 40 };
 
 const SENTENCE_END = /[。！？；…\.!?;]/;
+const SOFT_BREAK = /[，、,;；:：\s]/;
 
 export function chunkText(text: string, opts: Partial<ChunkerOptions> = {}): string[] {
   const options = { ...DEFAULT_OPTIONS, ...opts };
@@ -73,11 +74,20 @@ function splitSentences(text: string): string[] {
 function splitOversized(sentence: string, maxChars: number): string[] {
   const out: string[] = [];
   let buffer = "";
+  let lastSoftBreak = -1;
   for (const ch of sentence) {
     buffer += ch;
+    if (SOFT_BREAK.test(ch)) lastSoftBreak = buffer.length;
     if (buffer.length >= maxChars) {
-      out.push(buffer);
-      buffer = "";
+      if (lastSoftBreak > 0 && lastSoftBreak < buffer.length) {
+        out.push(buffer.slice(0, lastSoftBreak));
+        buffer = buffer.slice(lastSoftBreak);
+        lastSoftBreak = -1;
+      } else {
+        out.push(buffer);
+        buffer = "";
+        lastSoftBreak = -1;
+      }
     }
   }
   if (buffer) out.push(buffer);

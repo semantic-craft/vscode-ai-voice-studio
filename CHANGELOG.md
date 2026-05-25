@@ -13,6 +13,26 @@
 - Hardened `output.audio.data` playback by sniffing container bytes only when
   Qwen does not provide an explicit audio format hint.
 
+### UX fixes
+
+- Sidebar no longer clobbers the Instructions textarea while the user is
+  actively typing in it; an external config refresh now preserves in-progress
+  edits.
+- Playback rate from settings now updates the live `<audio>` element, so
+  speed changes apply to the currently-playing chunk instead of only the next
+  one.
+- Test-Voice button picks a phrase matching the selected `language_type`
+  (Chinese / English / German / Auto) instead of always speaking English.
+- Text chunker prefers commas / whitespace breaks before hard-splitting long
+  sentences without sentence-ending punctuation, removing many mid-word cuts.
+- `Set DashScope API Key…` rejects whitespace-only input and no longer stores
+  an empty secret.
+- Audio sniffer distinguishes AAC ADTS frames from MP3 sync frames using the
+  layer-bit field, so AAC payloads without an explicit format hint are tagged
+  correctly.
+- Default `waitUntilReady` timeout bumped from 3s to 5s to better cover
+  cold-activation on slower systems.
+
 ## 0.6.1
 
 - Qwen-TTS migration groundwork: DashScope endpoint, Qwen model/voice/language

@@ -262,9 +262,12 @@ export function activate(context: vscode.ExtensionContext): void {
         prompt: "Stored in VS Code SecretStorage. Leave empty to cancel.",
         password: true,
         ignoreFocusOut: true,
+        placeHolder: "DASHSCOPE_API_KEY / sk-...",
+        validateInput: (input) => (input.trim().length === 0 ? "API key cannot be empty." : null),
       });
-      if (!value) return;
-      await secrets.set(value.trim());
+      const trimmed = value?.trim();
+      if (!trimmed) return;
+      await secrets.set(trimmed);
       vscode.window.showInformationMessage("Qwen TTS Studio: DashScope API key saved.");
       if (viewProvider.isReady()) {
         viewProvider.postStatus("DashScope API key saved.", "info");

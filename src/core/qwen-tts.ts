@@ -200,17 +200,17 @@ function inferAudioFormatFromBase64(base64: string, fallback: string): string {
   if (buffer.length >= 3 && buffer.subarray(0, 3).toString("ascii") === "ID3") {
     return "mp3";
   }
-  if (buffer.length >= 2 && buffer[0] === 0xff && (buffer[1] & 0xe0) === 0xe0) {
-    return "mp3";
-  }
   if (buffer.length >= 4 && buffer.subarray(0, 4).toString("ascii") === "OggS") {
     return "opus";
   }
   if (buffer.length >= 4 && buffer.subarray(0, 4).toString("ascii") === "fLaC") {
     return "flac";
   }
-  if (buffer.length >= 2 && buffer[0] === 0xff && (buffer[1] & 0xf0) === 0xf0) {
-    return "aac";
+  if (buffer.length >= 2 && buffer[0] === 0xff) {
+    // AAC ADTS sync is 12 bits (0xFFF) with layer bits zero in byte 1.
+    if ((buffer[1] & 0xf6) === 0xf0) return "aac";
+    // MP3 sync is 11 bits (0xFFE) with layer bits non-zero.
+    if ((buffer[1] & 0xe0) === 0xe0 && (buffer[1] & 0x06) !== 0) return "mp3";
   }
   return fallback;
 }

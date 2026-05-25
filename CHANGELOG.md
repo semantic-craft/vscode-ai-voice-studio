@@ -1,5 +1,29 @@
 # Changelog
 
+## 0.11.0 - 2026-05-25
+
+Add the **Qwen-TTS Realtime WebSocket** path (`qwen3-tts-flash-realtime` and
+`qwen3-tts-instruct-flash-realtime`). Users can opt into the realtime model
+from the sidebar model picker.
+
+- **New runtime dependency**: `ws ^8.21.0` (no other transitive deps).
+- **New module** `src/core/qwen-tts-realtime.ts` implementing the
+  `wss://dashscope.aliyuncs.com/api-ws/v1/realtime` protocol (server_commit
+  mode): connect → `session.update` → `input_text_buffer.append` →
+  `session.finish`, then forward each `response.audio.delta` segment via the
+  same `onSubChunk` callback the HTTP SSE path uses. Tiered timeouts
+  (15 s first-audio, 90 s overall) carry over.
+- **Dispatch** in `synthesizeQwen` routes any `*-realtime` model to the
+  WebSocket implementation; non-realtime models continue to use HTTP SSE.
+
+**Latency caveat (measured against DashScope):** the realtime model reaches
+sub-100 ms server-side TTFB *after* the WebSocket is open. A cold-connect
+HTTP handshake + WS upgrade still costs ~400 ms on a typical link, so the
+single-shot first-audio time (~490 ms in our test) is only marginally
+faster than the HTTP SSE path (~510 ms). The WebSocket path will become
+genuinely lower-latency once we reuse a single open connection across
+multiple synthesis calls — a follow-up.
+
 ## 0.10.0 - 2026-05-25
 
 Big latency + ergonomics push for the Qwen-TTS streaming path, and the provider

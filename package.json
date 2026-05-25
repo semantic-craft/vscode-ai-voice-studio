@@ -2,7 +2,7 @@
   "name": "ai-voice-studio",
   "displayName": "AI Voice Studio",
   "description": "Read text aloud in VS Code with MiMo, Google Gemini, and Alibaba Qwen TTS — voice cloning, emotion tags, director mode, and SSE streaming for sub-second first-audio latency.",
-  "version": "0.10.0",
+  "version": "0.11.0",
   "publisher": "xianwei-zhang",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -115,7 +115,11 @@
       "properties": {
         "aiVoiceStudio.provider": {
           "type": "string",
-          "enum": ["mimo", "gemini", "qwen"],
+          "enum": [
+            "mimo",
+            "gemini",
+            "qwen"
+          ],
           "default": "qwen",
           "description": "Active TTS provider."
         },
@@ -157,7 +161,10 @@
         },
         "aiVoiceStudio.mimo.format": {
           "type": "string",
-          "enum": ["mp3", "wav"],
+          "enum": [
+            "mp3",
+            "wav"
+          ],
           "default": "wav",
           "description": "MiMo audio output format."
         },
@@ -173,13 +180,17 @@
         },
         "aiVoiceStudio.mimo.openingStyleTags": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Opening-style tags injected as a leading (tag) prefix on the synthesized text (e.g. '开心', '严肃', '兴奋', '粤语', '夹子音'). Custom values are accepted in addition to the doc presets. The 唱歌 tag overrides everything else."
         },
         "aiVoiceStudio.mimo.audioEventTags": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Audio-event tags injected as a Chinese-bracket prefix (e.g. '紧张', '笑', '深呼吸', '哽咽'). Custom values are accepted alongside the doc presets."
         },
@@ -189,12 +200,28 @@
           "description": "Saved (name, stylePrompt, opening tags, event tags) bundles. Manage them from the sidebar's Preset row.",
           "items": {
             "type": "object",
-            "required": ["name"],
+            "required": [
+              "name"
+            ],
             "properties": {
-              "name": { "type": "string" },
-              "stylePrompt": { "type": "string" },
-              "openingStyleTags": { "type": "array", "items": { "type": "string" } },
-              "audioEventTags": { "type": "array", "items": { "type": "string" } }
+              "name": {
+                "type": "string"
+              },
+              "stylePrompt": {
+                "type": "string"
+              },
+              "openingStyleTags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "audioEventTags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
             }
           }
         },
@@ -232,14 +259,18 @@
           "type": "string",
           "enum": [
             "qwen3-tts-flash",
-            "qwen3-tts-instruct-flash"
+            "qwen3-tts-instruct-flash",
+            "qwen3-tts-flash-realtime",
+            "qwen3-tts-instruct-flash-realtime"
           ],
           "enumDescriptions": [
-            "Qwen3 TTS Flash — current recommended non-realtime model.",
-            "Qwen3 TTS Instruct Flash — sends style instructions."
+            "Qwen3 TTS Flash — HTTP SSE streaming, sub-second first audio.",
+            "Qwen3 TTS Instruct Flash — HTTP SSE with style instructions.",
+            "Qwen3 TTS Flash Realtime — WebSocket, ~100 ms server-side TTFB (cold-connect handshake still costs ~400 ms).",
+            "Qwen3 TTS Instruct Flash Realtime — WebSocket with style instructions."
           ],
           "default": "qwen3-tts-flash",
-          "description": "Qwen-TTS model."
+          "description": "Qwen-TTS model. *-realtime variants use the WebSocket realtime endpoint; the others use HTTP SSE."
         },
         "aiVoiceStudio.qwen.voice": {
           "type": "string",
@@ -248,7 +279,10 @@
         },
         "aiVoiceStudio.qwen.endpoint": {
           "type": "string",
-          "enum": ["china", "international"],
+          "enum": [
+            "china",
+            "international"
+          ],
           "enumDescriptions": [
             "China endpoint: dashscope.aliyuncs.com.",
             "International endpoint: dashscope-intl.aliyuncs.com. Uses a region-specific API key."
@@ -258,7 +292,12 @@
         },
         "aiVoiceStudio.qwen.languageType": {
           "type": "string",
-          "enum": ["Auto", "Chinese", "English", "German"],
+          "enum": [
+            "Auto",
+            "Chinese",
+            "English",
+            "German"
+          ],
           "default": "Auto",
           "description": "Qwen-TTS language_type. Choose a single language for better pronunciation, or Auto for mixed/unknown text."
         },
@@ -281,6 +320,10 @@
   "devDependencies": {
     "@types/node": "^20.14.0",
     "@types/vscode": "^1.95.0",
+    "@types/ws": "^8.18.1",
     "typescript": "^5.6.3"
+  },
+  "dependencies": {
+    "ws": "^8.21.0"
   }
 }

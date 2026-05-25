@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.8.1 - 2026-05-25
+
+- Build: `vscode:prepublish` now wipes `out/` before recompiling, so stale
+  compiled files (e.g. the old `types.js`) no longer leak into the VSIX.
+
 ## 0.8.0 - 2026-05-25
 
 - Restored multi-provider support after the Qwen-only refactor. The sidebar

@@ -3,6 +3,7 @@ import type { ProviderId } from "./core/providers";
 
 const SECRET_KEYS: Record<ProviderId, string> = {
   mimo: "aiVoiceStudio.mimo.apiKey",
+  minimax: "aiVoiceStudio.minimax.apiKey",
   gemini: "aiVoiceStudio.gemini.apiKey",
   qwen: "aiVoiceStudio.qwen.dashscopeApiKey",
 };
@@ -10,16 +11,19 @@ const SECRET_KEYS: Record<ProviderId, string> = {
 const ENV_FALLBACKS: Partial<Record<ProviderId, string[]>> = {
   qwen: ["DASHSCOPE_API_KEY"],
   gemini: ["GEMINI_API_KEY", "GOOGLE_API_KEY"],
+  minimax: ["MINIMAX_API_KEY", "MINIMAXI_API_KEY"],
 };
 
 const PROMPT_TITLES: Record<ProviderId, string> = {
   mimo: "MiMo Token Plan API key (tp-…)",
+  minimax: "MiniMax API key",
   gemini: "Google AI Studio API key",
   qwen: "DashScope API key",
 };
 
 const PLACEHOLDERS: Record<ProviderId, string> = {
   mimo: "tp-...",
+  minimax: "MINIMAX_API_KEY / eyJ...",
   gemini: "AIzaSy...",
   qwen: "DASHSCOPE_API_KEY / sk-...",
 };

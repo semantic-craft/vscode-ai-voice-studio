@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.12.1 - 2026-05-27
+
+Hardening pass on the MiniMax provider after a session-goal audit caught
+two bugs and one piece of dead code that wouldn't have surfaced in the
+unit tests as written:
+
+- **Fix (real)**: when the user picked `format: "pcm"`, the webview
+  wrapped the bytes in a WAV header hardcoded to 24 kHz (the rate Qwen
+  Realtime uses), so MiniMax PCM at its default 32 kHz played back ~75%
+  speed and a fourth lower. Now wrapped inside `synthesizeMiniMax` with
+  the actual `sampleRate` and surfaced to the webview as `format: "wav"`.
+- **Fix (latency)**: the 15 s first-audio timer started when
+  `synthesizeMiniMax` was entered, so a slow WebSocket handshake (up to
+  10 s) ate the budget. Moved the timer arming inside the
+  `connected_success` handler so it measures server-side TTFB only.
+- **Cleanup**: the `task_failed` switch case was unreachable because the
+  generic `base_resp.status_code !== 0` guard fired first. Reordered so
+  `task_failed` keeps its dedicated message; the generic guard is now a
+  safety net for unnamed error frames. New regression test pins this.
+- **Test robustness**: the in-process server no longer reconstructs
+  `WS_URLS.global` via string-replace; both originals are captured up
+  front and restored verbatim.
+
 ## 0.12.0 - 2026-05-27
 
 Restore the **MiniMax T2A** provider, this time on the WebSocket streaming

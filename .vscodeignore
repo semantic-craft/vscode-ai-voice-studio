@@ -3,6 +3,7 @@
 .vscode-test/**
 .github/**
 .firecrawl/**
+.claude/**
 .eslintrc.json
 .editorconfig
 

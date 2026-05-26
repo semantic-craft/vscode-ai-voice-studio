@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.12.0 - 2026-05-27
+
+Restore the **MiniMax T2A** provider, this time on the WebSocket streaming
+endpoint (`wss://api.minimaxi.com/ws/v1/t2a_v2`, with `api.minimax.io` for the
+global region). MiniMax was dropped in 0.7.0 when the extension narrowed to
+Qwen-only; bringing it back rounds the sidebar out to four providers (MiMo,
+MiniMax, Gemini, Qwen) following the same factory/registry pattern the others
+use.
+
+- **New module** `src/core/minimax-tts.ts` — opens one WebSocket per text
+  chunk, waits for `connected_success`, sends `task_start` →
+  `task_continue` → buffers all hex-encoded audio segments until
+  `is_final: true`, then sends `task_finish` and closes. Tiered timeouts
+  (15 s first-audio, 90 s overall, 10 s handshake) mirror the Qwen realtime
+  path. Audio segments are concatenated and surfaced as a single
+  `SynthesizeResult` per chunk; the upstream playback session's lookahead
+  keeps first-audio latency low for long text.
+- **New module** `src/core/minimax-voices.ts` — six current models
+  (`speech-2.8-hd/turbo`, `speech-2.6-hd/turbo`, `speech-02-hd/turbo`),
+  curated Chinese/English voice roster from the previous v0.5.0 catalog
+  plus `male-qn-qingse` from the doc example, emotion presets, language
+  boost presets, and 语气词 inline tokens (2.8 family only).
+- **Sidebar UI** gains a MiniMax provider tab with region, format,
+  emotion, language-boost, speed/vol/pitch, and 语气词 chips for the 2.8
+  models. Provider strip is already a 4-column grid so no layout change
+  was needed.
+- **Secrets** reads `MINIMAX_API_KEY` / `MINIMAXI_API_KEY` env vars as a
+  fallback to the SecretStorage entry.
+- **Config schema** adds `aiVoiceStudio.minimax.*` keys (model, voice,
+  region, format, sampleRate, bitrate, speed, vol, pitch, emotion,
+  englishNormalization, languageBoost) with the documented ranges as
+  schema-level constraints.
+
+No bump to runtime dependencies — `ws@8.21.0` from 0.11.x is reused for the
+new socket. Bundle size grows ~6 KB (compiled JS for the new modules).
+
 ## 0.11.1 - 2026-05-27
 
 Fix: 0.11.0 vsix shipped without `node_modules/ws/`, so the extension threw

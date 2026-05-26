@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.11.1 - 2026-05-27
+
+Fix: 0.11.0 vsix shipped without `node_modules/ws/`, so the extension threw
+`Cannot find module 'ws'` on activation and the sidebar webview never
+rendered (empty panel after clicking the activity-bar icon). The cause was
+`.vscodeignore` blanket-ignoring `node_modules/**` while the changelog claimed
+the extension was "zero-dep at runtime" — that stopped being true the moment
+0.11.0 added `ws` for the Qwen Realtime WebSocket path.
+
+- Re-include `node_modules/ws/**` from the .vscodeignore deny-list (keeping
+  `ws` test fixtures, .github metadata, and READMEs out so the package
+  stays small — `ws@8.21.0` is itself zero-dep).
+- No code changes; everything that worked in 0.11.0 still works once `ws`
+  can be `require()`-ed.
+
 ## 0.11.0 - 2026-05-25
 
 Add the **Qwen-TTS Realtime WebSocket** path (`qwen3-tts-flash-realtime` and

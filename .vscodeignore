@@ -29,5 +29,11 @@ tests/**
 # icon source (only icon.png ships)
 media/icon-source.svg
 
-# node_modules — ship none (extension is zero-dep at runtime)
+# node_modules — drop everything, then re-include only the runtime deps
+# we actually require() at runtime (and their transitive deps, if any).
 node_modules/**
+!node_modules/ws/**
+node_modules/ws/test/**
+node_modules/ws/{.github,.husky,.vscode}/**
+node_modules/ws/**/*.md
+node_modules/ws/**/*.markdown

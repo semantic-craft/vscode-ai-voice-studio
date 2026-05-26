@@ -108,21 +108,25 @@ export async function synthesizeMiniMax(args: MiniMaxSynthesizeArgs): Promise<Sy
       if (buffer.length === 0) {
         return settle(() => reject(new TTSApiError("MiniMax returned no audio data.", -4)));
       }
-      // PCM has no container header — surface it as "pcm" so the webview wraps
-      // it in a WAV header before handing to the <audio> element. mp3 / wav
-      // already self-describe.
-      const format = args.format;
-      settle(() => resolve({ audioBase64: buffer.toString("base64"), format }));
+      // PCM has no container header. We wrap it here using the *actual*
+      // sample rate the user selected — the webview's WAV wrapper is
+      // hardcoded to 24 kHz (Qwen's fixed rate), so handing it raw PCM at
+      // any other rate (MiniMax defaults to 32 kHz) would play back at the
+      // wrong speed and pitch. mp3 / wav already self-describe.
+      if (args.format === "pcm") {
+        const wav = wrapPcmAsWav(buffer, args.sampleRate, args.channel);
+        return settle(() => resolve({ audioBase64: wav.toString("base64"), format: "wav" }));
+      }
+      settle(() => resolve({ audioBase64: buffer.toString("base64"), format: args.format }));
     };
 
     overallTimer = setTimeout(() => {
       fail(new TTSApiError(`MiniMax WebSocket timeout after ${OVERALL_TIMEOUT_MS / 1000}s`, -2));
     }, OVERALL_TIMEOUT_MS);
-    firstAudioTimer = setTimeout(() => {
-      if (audioChunks.length === 0) {
-        fail(new TTSApiError(`MiniMax sent no audio within ${FIRST_AUDIO_TIMEOUT_MS / 1000}s.`, -2));
-      }
-    }, FIRST_AUDIO_TIMEOUT_MS);
+    // The first-audio timer is armed only after `connected_success` so the
+    // budget measures server-side TTFB. Including the WebSocket handshake
+    // here would let a slow network falsely trip the timeout while the
+    // server hasn't even seen task_start yet.
 
     if (args.signal) {
       onAbortListener = () => fail(new TTSApiError("TTS synthesis cancelled.", -7));
@@ -193,17 +197,19 @@ export async function synthesizeMiniMax(args: MiniMaxSynthesizeArgs): Promise<Sy
         return;
       }
 
-      // Surface API-level errors no matter which event carries them.
       const baseResp = event.base_resp;
-      if (baseResp && typeof baseResp.status_code === "number" && baseResp.status_code !== 0) {
-        const msg = baseResp.status_msg || "MiniMax T2A error.";
-        fail(new TTSApiError(`${msg} (code: ${baseResp.status_code})`, baseResp.status_code));
-        return;
-      }
 
       switch (event.event) {
         case "connected_success": {
           connectedAck = true;
+          firstAudioTimer = setTimeout(() => {
+            if (audioChunks.length === 0) {
+              fail(new TTSApiError(
+                `MiniMax sent no audio within ${FIRST_AUDIO_TIMEOUT_MS / 1000}s.`,
+                -2,
+              ));
+            }
+          }, FIRST_AUDIO_TIMEOUT_MS);
           sendStartAndText();
           return;
         }
@@ -227,6 +233,15 @@ export async function synthesizeMiniMax(args: MiniMaxSynthesizeArgs): Promise<Sy
           // Fall through — many audio frames omit an `event` field and only
           // carry `data.audio` + `is_final`.
           break;
+      }
+
+      // Surface API-level errors that arrive on otherwise-unnamed frames.
+      // Event-named errors (`task_failed`) are handled above so they keep
+      // their dedicated semantics; this only catches the residual case.
+      if (baseResp && typeof baseResp.status_code === "number" && baseResp.status_code !== 0) {
+        const msg = baseResp.status_msg || "MiniMax T2A error.";
+        fail(new TTSApiError(`${msg} (code: ${baseResp.status_code})`, baseResp.status_code));
+        return;
       }
 
       const audioHex = event.data?.audio;
@@ -270,4 +285,25 @@ export async function synthesizeMiniMax(args: MiniMaxSynthesizeArgs): Promise<Sy
       fail(new TTSApiError(`MiniMax WebSocket: ${err.message}`, -6));
     });
   });
+}
+
+function wrapPcmAsWav(pcm: Buffer, sampleRate: number, channels: 1 | 2): Buffer {
+  const bitsPerSample = 16;
+  const byteRate = sampleRate * channels * (bitsPerSample / 8);
+  const blockAlign = channels * (bitsPerSample / 8);
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0, "ascii");
+  header.writeUInt32LE(36 + pcm.length, 4);
+  header.write("WAVE", 8, "ascii");
+  header.write("fmt ", 12, "ascii");
+  header.writeUInt32LE(16, 16); // PCM fmt-chunk size
+  header.writeUInt16LE(1, 20); // PCM format tag
+  header.writeUInt16LE(channels, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(byteRate, 28);
+  header.writeUInt16LE(blockAlign, 32);
+  header.writeUInt16LE(bitsPerSample, 34);
+  header.write("data", 36, "ascii");
+  header.writeUInt32LE(pcm.length, 40);
+  return Buffer.concat([header, pcm], 44 + pcm.length);
 }

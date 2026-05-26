@@ -5,7 +5,10 @@ const { WebSocketServer } = require("ws");
 const { synthesizeMiniMax } = require("../out/core/minimax-tts.js");
 const { WS_URLS } = require("../out/core/minimax-voices.js");
 
-const ORIGINAL_WS_URL = WS_URLS.mainland;
+// Capture both originals up front. Reconstructing `global` from `mainland`
+// via string-replace assumes the two URLs only differ by domain, which
+// would silently break if the path ever changes.
+const ORIGINAL_WS_URLS = { ...WS_URLS };
 
 function startTestServer(handler) {
   return new Promise((resolve, reject) => {
@@ -21,8 +24,9 @@ function startTestServer(handler) {
         url,
         async close() {
           await new Promise((r) => wss.close(r));
-          WS_URLS.mainland = ORIGINAL_WS_URL;
-          WS_URLS.global = ORIGINAL_WS_URL.replace("api.minimaxi.com", "api.minimax.io");
+          for (const key of Object.keys(ORIGINAL_WS_URLS)) {
+            WS_URLS[key] = ORIGINAL_WS_URLS[key];
+          }
         },
       });
     });
@@ -159,6 +163,34 @@ test("MiniMax synthesizer rejects when server reports a non-zero status_code", a
   }
 });
 
+test("MiniMax synthesizer surfaces task_failed with its dedicated message even when base_resp.status_code is nonzero", async () => {
+  // Before the event-switch reordering, the early base_resp guard intercepted
+  // every nonzero status_code and the dedicated `task_failed` arm was dead.
+  // Regression test: the `task_failed` message string must reach the caller.
+  const server = await startTestServer((ws) => {
+    ws.send(JSON.stringify({ event: "connected_success" }));
+    ws.on("message", (raw) => {
+      const msg = JSON.parse(raw.toString());
+      if (msg.event === "task_start") {
+        ws.send(JSON.stringify({
+          event: "task_failed",
+          base_resp: { status_code: 2013, status_msg: "voice_id does not exist" },
+        }));
+        ws.close();
+      }
+    });
+  });
+
+  try {
+    await assert.rejects(
+      synthesizeMiniMax(defaultArgs()),
+      (err) => err.code === 2013 && err.message === "voice_id does not exist",
+    );
+  } finally {
+    await server.close();
+  }
+});
+
 test("MiniMax synthesizer rejects when the server closes before sending audio", async () => {
   const server = await startTestServer((ws) => {
     ws.send(JSON.stringify({ event: "connected_success" }));
@@ -179,6 +211,46 @@ test("MiniMax synthesizer rejects when the server closes before sending audio", 
       synthesizeMiniMax(defaultArgs()),
       (err) => /before sending audio/.test(err.message) && err.code === -4,
     );
+  } finally {
+    await server.close();
+  }
+});
+
+test("MiniMax synthesizer wraps pcm output in a WAV header at the requested sample rate", async () => {
+  // 48 samples of silence to verify both the header math and the payload pass-through.
+  const pcmPayload = Buffer.alloc(96); // 48 samples × 2 bytes (s16le)
+  const server = await startTestServer((ws) => {
+    ws.send(JSON.stringify({ event: "connected_success" }));
+    ws.on("message", (raw) => {
+      const msg = JSON.parse(raw.toString());
+      if (msg.event === "task_continue") {
+        ws.send(JSON.stringify({ data: { audio: pcmPayload.toString("hex") }, is_final: true }));
+      }
+      if (msg.event === "task_finish") ws.close();
+    });
+  });
+
+  try {
+    const result = await synthesizeMiniMax(defaultArgs({ format: "pcm", sampleRate: 32000 }));
+    // The webview's PCM player is locked to 24 kHz, so the synthesizer must
+    // hand back container-tagged audio. Format flips from pcm → wav.
+    assert.equal(result.format, "wav");
+
+    const wav = Buffer.from(result.audioBase64, "base64");
+    assert.equal(wav.length, 44 + pcmPayload.length, "WAV header + payload");
+    assert.equal(wav.subarray(0, 4).toString("ascii"), "RIFF");
+    assert.equal(wav.subarray(8, 12).toString("ascii"), "WAVE");
+    assert.equal(wav.subarray(12, 16).toString("ascii"), "fmt ");
+    assert.equal(wav.readUInt32LE(16), 16); // fmt chunk size for PCM
+    assert.equal(wav.readUInt16LE(20), 1);  // PCM tag
+    assert.equal(wav.readUInt16LE(22), 1);  // mono
+    assert.equal(wav.readUInt32LE(24), 32000, "sample rate must reflect args, not 24 kHz");
+    assert.equal(wav.readUInt32LE(28), 32000 * 1 * 2); // byte rate
+    assert.equal(wav.readUInt16LE(32), 2); // block align
+    assert.equal(wav.readUInt16LE(34), 16); // bits/sample
+    assert.equal(wav.subarray(36, 40).toString("ascii"), "data");
+    assert.equal(wav.readUInt32LE(40), pcmPayload.length);
+    assert.deepEqual(wav.subarray(44), pcmPayload);
   } finally {
     await server.close();
   }

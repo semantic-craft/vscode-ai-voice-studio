@@ -2,7 +2,7 @@
   "name": "ai-voice-studio",
   "displayName": "AI Voice Studio",
   "description": "Read text aloud in VS Code with MiMo, MiniMax, Google Gemini, and Alibaba Qwen TTS — voice cloning, emotion tags, director mode, and WebSocket/SSE streaming for sub-second first-audio latency.",
-  "version": "0.12.0",
+  "version": "0.12.1",
   "publisher": "xianwei-zhang",
   "license": "MIT",
   "icon": "media/icon.png",

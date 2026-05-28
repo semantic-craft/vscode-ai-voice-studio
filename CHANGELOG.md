@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.12.3 - 2026-05-28
+
+Fix the "Set API Key" flow, which gave no sign that a key had been saved.
+
+- **Root cause**: the sidebar's Set API Key button ran the generic
+  `setApiKey` command, which opened a *provider picker* first. Clicking a
+  button labelled "Set API Key" and then getting a provider QuickPick was
+  confusing — pasting the key into that picker's filter and pressing Enter
+  matched no provider, so the command silently returned with nothing saved
+  and no message.
+- **Fix**: the sidebar button now stores the key for the *currently active*
+  provider directly — no picker — going straight to the key input box. The
+  command-palette `AI Voice Studio: Set API Key…` still asks which provider,
+  since there's no active-provider context there.
+- **Feedback**: saving now gives three confirmations — the VS Code toast, a
+  `✓ … API key saved` line in the sidebar status, and a persistent badge.
+  The button shows **API Key ✓** (muted) when a key is stored for the active
+  provider and **Set API Key** (accent) when it isn't. The badge reflects
+  existing keys on load and updates when you switch providers or clear a key.
+
 ## 0.12.2 - 2026-05-28
 
 Discoverability + sidebar polish pass. No change to the synthesis path —

@@ -129,6 +129,7 @@ export function activate(context: vscode.ExtensionContext): void {
   const refreshConfig = (): void => {
     if (!provider.isReady()) return;
     provider.postConfig(getConfig(), getMiMoVoiceCloneSample(context.globalState));
+    void postActiveKeyStatus();
   };
   let configUpdateChain: Promise<void> = Promise.resolve();
   const queueConfigUpdate = (update: () => Promise<void>, shouldRefresh = false): void => {
@@ -143,6 +144,31 @@ export function activate(context: vscode.ExtensionContext): void {
       });
   };
 
+  async function promptAndStoreKey(target?: ProviderId): Promise<void> {
+    const choice = target ?? (await pickProvider("Set API key for…"));
+    if (!choice) return;
+    const value = await vscode.window.showInputBox({
+      title: `${PROVIDER_LABELS[choice]} API key`,
+      prompt: "Stored in VS Code SecretStorage. Leave empty to cancel.",
+      password: true,
+      ignoreFocusOut: true,
+      validateInput: (input) => (input.trim().length === 0 ? "API key cannot be empty." : null),
+    });
+    const trimmed = value?.trim();
+    if (!trimmed) return;
+    await secrets.set(choice, trimmed);
+    vscode.window.showInformationMessage(`AI Voice Studio: ${PROVIDER_LABELS[choice]} API key saved.`);
+    provider.postStatus(`✓ ${PROVIDER_LABELS[choice]} API key saved.`, "success");
+    void postActiveKeyStatus();
+  }
+
+  async function postActiveKeyStatus(): Promise<void> {
+    if (!provider.isReady()) return;
+    const active = getConfig().provider;
+    const hasKey = !!(await secrets.get(active));
+    provider.postKeyStatus(active, hasKey);
+  }
+
   provider.setMessageHandler((msg) => {
     switch (msg.type) {
       case "ready":
@@ -156,7 +182,7 @@ export function activate(context: vscode.ExtensionContext): void {
         statusBar.set({ kind: "idle" });
         return;
       case "requestSetKey":
-        void vscode.commands.executeCommand("aiVoiceStudio.setApiKey");
+        void promptAndStoreKey(msg.provider);
         return;
       case "providerChanged":
         queueConfigUpdate(() => setProvider(msg.provider), true);
@@ -376,29 +402,13 @@ export function activate(context: vscode.ExtensionContext): void {
       provider.postStop();
       statusBar.set({ kind: "idle" });
     }),
-    vscode.commands.registerCommand("aiVoiceStudio.setApiKey", async () => {
-      const choice = await pickProvider("Set API key for…");
-      if (!choice) return;
-      const value = await vscode.window.showInputBox({
-        title: `${PROVIDER_LABELS[choice]} API key`,
-        prompt: "Stored in VS Code SecretStorage. Leave empty to cancel.",
-        password: true,
-        ignoreFocusOut: true,
-        validateInput: (input) => (input.trim().length === 0 ? "API key cannot be empty." : null),
-      });
-      const trimmed = value?.trim();
-      if (!trimmed) return;
-      await secrets.set(choice, trimmed);
-      vscode.window.showInformationMessage(`AI Voice Studio: ${PROVIDER_LABELS[choice]} API key saved.`);
-      if (provider.isReady()) {
-        provider.postStatus(`${PROVIDER_LABELS[choice]} API key saved.`, "info");
-      }
-    }),
+    vscode.commands.registerCommand("aiVoiceStudio.setApiKey", () => promptAndStoreKey()),
     vscode.commands.registerCommand("aiVoiceStudio.clearApiKey", async () => {
       const choice = await pickProvider("Clear API key for…");
       if (!choice) return;
       await secrets.clear(choice);
       vscode.window.showInformationMessage(`AI Voice Studio: ${PROVIDER_LABELS[choice]} API key cleared.`);
+      void postActiveKeyStatus();
     }),
     vscode.commands.registerCommand("aiVoiceStudio.focusView", () => {
       vscode.commands.executeCommand("aiVoiceStudio.studio.focus");

@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.12.2 - 2026-05-28
+
+Discoverability + sidebar polish pass. No change to the synthesis path —
+audio output is byte-for-byte the same as 0.12.1.
+
+- **Marketplace metadata**: `displayName` is now
+  `AI Voice Studio: Qwen, MiniMax, MiMo & Gemini TTS`, the `description` leads
+  with a Chinese one-liner (English second) so the search-result preview shows
+  the highlights in Chinese first, and `keywords` gains the phrase forms people
+  actually type — `qwen tts`, `minimax tts`, `mimo tts`, `gemini tts` — plus
+  bare provider names and Chinese terms (`语音合成`, `文字转语音`, `朗读`,
+  `通义千问`, `小米`). Takes effect only after a republish re-indexes the
+  Marketplace.
+- **Set API Key button**: the faint top-right `Set key…` text link became a
+  filled accent button labelled **Set API Key** (larger, bold), so first-run
+  users can see where to paste a key.
+- **MiniMax 语气词 chips (display fix)**: the chips rendered the raw English
+  token (`(laughs)`, `(sighs)`) instead of their Chinese label. They now show
+  中文 (笑声 / 叹气 / 换气 …); clicking still inserts the documented MiniMax
+  marker, and the tooltip shows exactly what gets inserted. Per the official
+  T2A docs the marker stays English-in-parens even inside Chinese text, so the
+  inserted token is unchanged — only the chip label is localized.
+- **MiniMax emotion dropdown**: relabelled to pure Chinese (开心 / 伤感 /
+  愤怒 / 害怕 / 厌恶 / 惊讶 / 中性 / 自动). The underlying `emotion` API values
+  are unchanged.
+- **README**: now documents the MiniMax provider end to end (it was missing
+  entirely), with a bilingual Chinese-first intro, the `minimax.*` settings
+  row, and the `MINIMAX_API_KEY` / `MINIMAXI_API_KEY` env fallbacks.
+
 ## 0.12.1 - 2026-05-27
 
 Hardening pass on the MiniMax provider after a session-goal audit caught

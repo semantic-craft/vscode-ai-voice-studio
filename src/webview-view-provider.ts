@@ -306,15 +306,18 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       letter-spacing: 0.2px;
     }
     .topbar .spacer { flex: 1; }
-    .topbar .pill-link {
-      font-size: 0.8em;
-      color: var(--vscode-descriptionForeground);
-      cursor: pointer;
-      background: transparent;
+    .topbar .key-btn {
+      font-size: 0.92em;
+      font-weight: 600;
+      color: var(--vscode-button-foreground);
+      background: var(--vscode-button-background);
       border: none;
-      padding: 2px 6px;
+      border-radius: var(--radius);
+      padding: 4px 12px;
+      cursor: pointer;
+      white-space: nowrap;
     }
-    .topbar .pill-link:hover { color: var(--vscode-foreground); }
+    .topbar .key-btn:hover { background: var(--vscode-button-hoverBackground); }
 
     .provider-strip {
       display: grid;
@@ -675,7 +678,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
   <div class="topbar">
     <h1>AI Voice Studio</h1>
     <span class="spacer"></span>
-    <button id="setKeyLink" class="pill-link" title="Set API key for the active provider">Set key…</button>
+    <button id="setKeyLink" class="key-btn" title="Set the API key for the active provider">Set API Key</button>
   </div>
   <div class="provider-strip" id="providerStrip" role="tablist"></div>
 
@@ -1692,8 +1695,8 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
             const chip = document.createElement("button");
             chip.type = "button";
             chip.className = "chip audio-tag";
-            chip.textContent = tag.token;
-            chip.title = tag.label + " — insert at cursor";
+            chip.textContent = tag.label;
+            chip.title = "插入 " + tag.token + "（MiniMax 官方语气词标记）";
             chip.addEventListener("click", () => insertAudioTag(tag.token));
             els.minimaxSpeechTags.appendChild(chip);
           }

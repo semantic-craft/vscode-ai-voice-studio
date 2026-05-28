@@ -82,14 +82,14 @@ const ALL_MODELS: MiniMaxModel[] = [
 export const TAG_CAPABLE_MODELS: MiniMaxModel[] = ["speech-2.8-hd", "speech-2.8-turbo"];
 
 export const EMOTION_OPTIONS: { id: MiniMaxEmotion; label: string }[] = [
-  { id: "auto", label: "Auto (model decides)" },
-  { id: "happy", label: "Happy 开心" },
-  { id: "sad", label: "Sad 伤感" },
-  { id: "angry", label: "Angry 愤怒" },
-  { id: "fearful", label: "Fearful 害怕" },
-  { id: "disgusted", label: "Disgusted 厌恶" },
-  { id: "surprised", label: "Surprised 惊讶" },
-  { id: "neutral", label: "Neutral 中性" },
+  { id: "auto", label: "自动（模型判断）" },
+  { id: "happy", label: "开心" },
+  { id: "sad", label: "伤感" },
+  { id: "angry", label: "愤怒" },
+  { id: "fearful", label: "害怕" },
+  { id: "disgusted", label: "厌恶" },
+  { id: "surprised", label: "惊讶" },
+  { id: "neutral", label: "中性" },
 ];
 
 export const SPEECH_TAG_PRESETS: { token: string; label: string }[] = [

@@ -33,7 +33,7 @@ type IncomingMessage =
   | { type: "log"; payload: unknown }
   | { type: "requestRead"; text: string }
   | { type: "requestStop" }
-  | { type: "requestSetKey" }
+  | { type: "requestSetKey"; provider?: ProviderId }
   | { type: "rateChanged"; rate: number }
   | { type: "providerChanged"; provider: ProviderId }
   | { type: "voiceChanged"; provider: ProviderId; voice: string }
@@ -145,6 +145,10 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
 
   postStatus(status: string, tone: StatusTone = "info", action?: { label: string; id: string }): void {
     this.view?.webview.postMessage({ type: "status", status, tone, action });
+  }
+
+  postKeyStatus(provider: ProviderId, hasKey: boolean): void {
+    this.view?.webview.postMessage({ type: "keyStatus", provider, hasKey });
   }
 
   postConfig(cfg: AppConfig, cloneSample?: MiMoVoiceCloneSampleRecord): void {
@@ -318,6 +322,16 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       white-space: nowrap;
     }
     .topbar .key-btn:hover { background: var(--vscode-button-hoverBackground); }
+    .topbar .key-btn[data-set="true"] {
+      background: transparent;
+      color: var(--vscode-descriptionForeground);
+      border: 1px solid var(--border);
+      font-weight: 500;
+    }
+    .topbar .key-btn[data-set="true"]:hover {
+      color: var(--vscode-foreground);
+      background: var(--vscode-list-hoverBackground);
+    }
 
     .provider-strip {
       display: grid;
@@ -1058,6 +1072,19 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         }
       }
 
+      const keyState = {};
+      function renderKeyButton() {
+        if (keyState[state.provider] === true) {
+          els.setKeyLink.textContent = "API Key ✓";
+          els.setKeyLink.dataset.set = "true";
+          els.setKeyLink.title = activeCatalog().label + " API key saved — click to replace";
+        } else {
+          els.setKeyLink.textContent = "Set API Key";
+          els.setKeyLink.dataset.set = "false";
+          els.setKeyLink.title = "Set the API key for " + activeCatalog().label;
+        }
+      }
+
       function setMode(next) {
         mode = next;
         els.primary.dataset.state = mode;
@@ -1588,7 +1615,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       // ---------- event wiring ----------
 
       els.setKeyLink.addEventListener("click", () => {
-        vscode.postMessage({ type: "requestSetKey" });
+        vscode.postMessage({ type: "requestSetKey", provider: state.provider });
       });
 
       els.model.addEventListener("change", () => {
@@ -1939,7 +1966,7 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
 
       els.statusActionBtn.addEventListener("click", () => {
         if (!pendingAction) return;
-        vscode.postMessage({ type: pendingAction.id });
+        vscode.postMessage({ type: pendingAction.id, provider: state.provider });
       });
 
       // ---- player chunk pipeline ----
@@ -2073,11 +2100,17 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
           case "config":
             state = msg.config;
             renderAll();
+            renderKeyButton();
+            break;
+          case "keyStatus":
+            keyState[msg.provider] = msg.hasKey;
+            renderKeyButton();
             break;
         }
       });
 
       renderAll();
+      renderKeyButton();
       setMode("idle");
       vscode.postMessage({ type: "ready" });
     })();

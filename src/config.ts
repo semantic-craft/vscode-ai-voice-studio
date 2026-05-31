@@ -4,7 +4,7 @@ import {
   DEFAULT_BASE_URL as MIMO_DEFAULT_BASE_URL,
   DEFAULT_FORMAT as MIMO_DEFAULT_FORMAT,
   DEFAULT_MODEL as MIMO_DEFAULT_MODEL,
-  DEFAULT_VOICE as MIMO_DEFAULT_VOICE,
+  normalizeMiMoVoice,
   type MiMoFormat,
   type MiMoModel,
 } from "./core/mimo-voices";
@@ -110,13 +110,14 @@ export interface AppConfig {
 
 export function getConfig(): AppConfig {
   const cfg = vscode.workspace.getConfiguration(SECTION);
+  const mimoModel = normalizeMiMoModel(cfg.get<string>("mimo.model"));
   return {
     provider: normalizeProvider(cfg.get<string>("provider")),
     playbackRate: clampRate(cfg.get<number>("playbackRate") ?? 1),
     chunkSize: clampChunkSize(cfg.get<number>("chunkSize") ?? 250),
     mimo: {
-      model: normalizeMiMoModel(cfg.get<string>("mimo.model")),
-      voice: getTrimmedString(cfg, "mimo.voice") || MIMO_DEFAULT_VOICE,
+      model: mimoModel,
+      voice: normalizeMiMoVoice(cfg.get<string>("mimo.voice"), mimoModel),
       format: normalizeMiMoFormat(cfg.get<string>("mimo.format")),
       baseUrl: getTrimmedString(cfg, "mimo.baseUrl") || MIMO_DEFAULT_BASE_URL,
       stylePrompt: getString(cfg, "mimo.stylePrompt"),

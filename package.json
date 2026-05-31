@@ -173,8 +173,8 @@
         },
         "aiVoiceStudio.mimo.voice": {
           "type": "string",
-          "default": "mimo_default",
-          "description": "Default MiMo voice ID. Ignored for the voicedesign / voiceclone models."
+          "default": "Chloe",
+          "description": "Default MiMo voice ID. Uses an explicit English voice because MiMo Default is region-dependent. Ignored for the voicedesign / voiceclone models."
         },
         "aiVoiceStudio.mimo.format": {
           "type": "string",

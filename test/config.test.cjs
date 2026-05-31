@@ -60,6 +60,36 @@ test("getConfig tolerates dirty Qwen settings without throwing", () => {
   );
 });
 
+test("MiMo voice defaults avoid region-dependent platform default", () => {
+  withMockedVscode(
+    {
+      "mimo.model": "mimo-v2.5-tts",
+      "mimo.voice": "mimo_default",
+    },
+    ({ getConfig }) => {
+      const cfg = getConfig();
+
+      assert.equal(cfg.mimo.model, "mimo-v2.5-tts");
+      assert.equal(cfg.mimo.voice, "Chloe");
+    },
+  );
+});
+
+test("MiMo legacy model defaults to explicit English legacy voice", () => {
+  withMockedVscode(
+    {
+      "mimo.model": "mimo-v2-tts",
+      "mimo.voice": "mimo_default",
+    },
+    ({ getConfig }) => {
+      const cfg = getConfig();
+
+      assert.equal(cfg.mimo.model, "mimo-v2-tts");
+      assert.equal(cfg.mimo.voice, "default_en");
+    },
+  );
+});
+
 test("Qwen setters normalize settings before writing", async () => {
   const settings = {};
   await withMockedVscode(

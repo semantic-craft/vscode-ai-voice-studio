@@ -9,7 +9,8 @@ export type MiMoModel =
 export type MiMoFormat = "mp3" | "wav";
 
 export const DEFAULT_MODEL: MiMoModel = "mimo-v2.5-tts";
-export const DEFAULT_VOICE = "mimo_default";
+export const DEFAULT_VOICE = "Chloe";
+export const LEGACY_DEFAULT_VOICE = "default_en";
 export const DEFAULT_FORMAT: MiMoFormat = "wav";
 export const DEFAULT_BASE_URL = "https://token-plan-cn.xiaomimimo.com/v1";
 
@@ -46,18 +47,15 @@ const V25_PRESET: MiMoModel[] = ["mimo-v2.5-tts"];
 const V2_PRESET: MiMoModel[] = ["mimo-v2-tts"];
 const VOICE_DESIGN: MiMoModel[] = ["mimo-v2.5-tts-voicedesign"];
 const VOICE_CLONE: MiMoModel[] = ["mimo-v2.5-tts-voiceclone"];
-const ANY_PRESET: MiMoModel[] = ["mimo-v2.5-tts", "mimo-v2-tts"];
-
 export const VOICES: VoiceConfig[] = [
-  { id: "mimo_default", name: "MiMo Default",        category: "Default",  description: "Platform default for the active region.",                 models: ANY_PRESET, recommended: true },
+  { id: "Chloe",        name: "Chloe",               category: "English",  description: "Expressive English female voice.",                         models: V25_PRESET, recommended: true },
+  { id: "Mia",          name: "Mia",                 category: "English",  description: "Natural English female voice.",                            models: V25_PRESET },
+  { id: "Milo",         name: "Milo",                category: "English",  description: "Warm English male voice.",                                 models: V25_PRESET },
+  { id: "Dean",         name: "Dean",                category: "English",  description: "Grounded English male voice for narration.",               models: V25_PRESET },
   { id: "冰糖",         name: "Bingtang",            category: "Chinese",  description: "Clear Chinese female voice for narration.",                models: V25_PRESET, recommended: true },
   { id: "茉莉",         name: "Moli",                category: "Chinese",  description: "Soft Chinese female voice, calm tone.",                    models: V25_PRESET },
   { id: "苏打",         name: "Soda",                category: "Chinese",  description: "Bright Chinese male voice, short-form.",                   models: V25_PRESET },
   { id: "白桦",         name: "Baihua",              category: "Chinese",  description: "Steady Chinese male voice for long text.",                 models: V25_PRESET },
-  { id: "Mia",          name: "Mia",                 category: "English",  description: "Natural English female voice.",                            models: V25_PRESET },
-  { id: "Chloe",        name: "Chloe",               category: "English",  description: "Expressive English female voice.",                         models: V25_PRESET, recommended: true },
-  { id: "Milo",         name: "Milo",                category: "English",  description: "Warm English male voice.",                                 models: V25_PRESET },
-  { id: "Dean",         name: "Dean",                category: "English",  description: "Grounded English male voice for narration.",               models: V25_PRESET },
   { id: "default_zh",   name: "MiMo Chinese Female", category: "Legacy",   description: "Legacy MiMo-V2 Chinese female voice.",                     models: V2_PRESET },
   { id: "default_en",   name: "MiMo English Female", category: "Legacy",   description: "Legacy MiMo-V2 English female voice.",                     models: V2_PRESET },
   { id: VOICE_DESIGN_PLACEHOLDER, name: "Custom — described in prompt", category: "Custom", description: "Voice is invented from the user prompt.", models: VOICE_DESIGN, recommended: true },
@@ -242,6 +240,22 @@ export const AUDIO_EVENT_GROUPS: StyleTagGroup[] = [
 /** Flat list, mostly kept so older callers keep compiling. */
 export const STYLE_TAG_PRESETS: StyleTagPreset[] = STYLE_TAG_GROUPS.flatMap((g) => g.tags);
 export const AUDIO_EVENT_PRESETS: StyleTagPreset[] = AUDIO_EVENT_GROUPS.flatMap((g) => g.tags);
+
+export function defaultVoiceForModel(model: MiMoModel): string {
+  if (model === "mimo-v2-tts") return LEGACY_DEFAULT_VOICE;
+  if (isVoiceDesignModel(model)) return VOICE_DESIGN_PLACEHOLDER;
+  if (isVoiceCloneModel(model)) return VOICE_CLONE_PLACEHOLDER;
+  return DEFAULT_VOICE;
+}
+
+export function normalizeMiMoVoice(value: string | undefined, model: MiMoModel): string {
+  const trimmed = typeof value === "string" ? value.trim() : "";
+  const fallback = defaultVoiceForModel(model);
+  if (!trimmed || trimmed === "mimo_default") return fallback;
+  const voice = VOICES.find((v) => v.id === trimmed);
+  if (!voice) return fallback;
+  return voice.models.length === 0 || voice.models.includes(model) ? voice.id : fallback;
+}
 
 /**
  * Templates inserted into the style-prompt textarea on demand.

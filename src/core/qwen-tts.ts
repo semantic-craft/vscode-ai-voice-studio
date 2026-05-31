@@ -11,6 +11,7 @@ import { synthesizeQwenRealtime } from "./qwen-tts-realtime";
 
 const REQUEST_TIMEOUT_MS = 90_000;
 const TTFB_TIMEOUT_MS = 15_000;
+const GENERATION_PATH = "/services/aigc/multimodal-generation/generation";
 
 export interface QwenSynthesizeArgs extends SynthesizeContext {
   apiKey: string;
@@ -119,7 +120,7 @@ export async function synthesizeQwen(args: QwenSynthesizeArgs): Promise<Synthesi
   if (args.onSubChunk) headers["X-DashScope-SSE"] = "enable";
 
   try {
-    const response = await fetch(ENDPOINT_URLS[args.endpoint], {
+    const response = await fetch(qwenGenerationUrl(ENDPOINT_URLS[args.endpoint]), {
       method: "POST",
       headers,
       body: JSON.stringify(body),
@@ -181,6 +182,12 @@ export async function synthesizeQwen(args: QwenSynthesizeArgs): Promise<Synthesi
     clearTtfbTimer();
     args.signal?.removeEventListener("abort", onAbort);
   }
+}
+
+function qwenGenerationUrl(baseHttpApiUrl: string): string {
+  const trimmed = baseHttpApiUrl.replace(/\/+$/, "");
+  if (trimmed.endsWith(GENERATION_PATH)) return trimmed;
+  return `${trimmed}${GENERATION_PATH}`;
 }
 
 async function readStreamingResponse(

@@ -2,7 +2,7 @@
   "name": "ai-voice-studio",
   "displayName": "AI Voice Studio: Qwen, MiniMax, MiMo & Gemini TTS",
   "description": "在 VS Code 里朗读文本、生成语音：Qwen TTS、MiniMax TTS、MiMo TTS（小米）、Google Gemini TTS 多家语音合成一键切换，支持声音克隆、音色设计、情感语气标签、流式播放与亚秒级首字音延迟。Read text aloud in VS Code with Qwen, MiniMax, MiMo and Gemini TTS — multi-provider text-to-speech with voice cloning, voice design, emotion tags, and sub-second streaming.",
-  "version": "0.12.3",
+  "version": "0.12.4",
   "publisher": "xianwei-zhang",
   "license": "MIT",
   "icon": "media/icon.png",

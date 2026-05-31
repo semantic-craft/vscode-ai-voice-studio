@@ -14,8 +14,8 @@ export const DEFAULT_ENDPOINT: QwenEndpoint = "china";
 export const DEFAULT_LANGUAGE_TYPE: QwenLanguageType = "Auto";
 
 export const ENDPOINT_URLS: Record<QwenEndpoint, string> = {
-  china: "https://dashscope.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
-  international: "https://dashscope-intl.aliyuncs.com/api/v1/services/aigc/multimodal-generation/generation",
+  china: "https://dashscope.aliyuncs.com/api/v1",
+  international: "https://dashscope-intl.aliyuncs.com/api/v1",
 };
 
 export const REALTIME_WS_URLS: Record<QwenEndpoint, string> = {

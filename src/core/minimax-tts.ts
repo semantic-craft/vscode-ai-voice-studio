@@ -61,8 +61,9 @@ interface T2AEvent {
  */
 export async function synthesizeMiniMax(args: MiniMaxSynthesizeArgs): Promise<SynthesizeResult> {
   const text = args.text.trim();
+  const apiKey = normalizeBearerApiKey(args.apiKey);
   if (!text) throw new TTSApiError("Text cannot be empty.", -1);
-  if (!args.apiKey) throw new TTSApiError("MiniMax API key is missing.", -1);
+  if (!apiKey) throw new TTSApiError("MiniMax API key is missing.", -1);
   if (args.signal?.aborted) throw new TTSApiError("TTS synthesis cancelled.", -7);
 
   return new Promise<SynthesizeResult>((resolve, reject) => {
@@ -76,7 +77,7 @@ export async function synthesizeMiniMax(args: MiniMaxSynthesizeArgs): Promise<Sy
     const audioChunks: Buffer[] = [];
 
     const ws = new WebSocket(WS_URLS[args.region], {
-      headers: { Authorization: `Bearer ${args.apiKey}` },
+      headers: { Authorization: `Bearer ${apiKey}` },
       handshakeTimeout: HANDSHAKE_TIMEOUT_MS,
     });
 
@@ -285,6 +286,10 @@ export async function synthesizeMiniMax(args: MiniMaxSynthesizeArgs): Promise<Sy
       fail(new TTSApiError(`MiniMax WebSocket: ${err.message}`, -6));
     });
   });
+}
+
+function normalizeBearerApiKey(apiKey: string): string {
+  return apiKey.trim().replace(/^Bearer\s+/i, "").trim();
 }
 
 function wrapPcmAsWav(pcm: Buffer, sampleRate: number, channels: 1 | 2): Buffer {

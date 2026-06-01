@@ -115,6 +115,28 @@ test("MiniMax WebSocket synthesizer follows connected_success → task_start →
   }
 });
 
+test("MiniMax WebSocket synthesizer strips an accidental Bearer prefix from the API key", async () => {
+  let authorization;
+  const server = await startTestServer((ws, req) => {
+    authorization = req.headers.authorization;
+    ws.send(JSON.stringify({ event: "connected_success" }));
+    ws.on("message", (raw) => {
+      const msg = JSON.parse(raw.toString());
+      if (msg.event === "task_continue") {
+        ws.send(JSON.stringify({ data: { audio: "ab" }, is_final: true }));
+      }
+      if (msg.event === "task_finish") ws.close();
+    });
+  });
+
+  try {
+    await synthesizeMiniMax(defaultArgs({ apiKey: "Bearer test-key" }));
+    assert.equal(authorization, "Bearer test-key");
+  } finally {
+    await server.close();
+  }
+});
+
 test("MiniMax synthesizer includes emotion + language_boost when set", async () => {
   let startPayload;
   const server = await startTestServer((ws) => {

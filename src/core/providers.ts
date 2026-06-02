@@ -1,11 +1,10 @@
-export type ProviderId = "qwen" | "minimax" | "mimo" | "gemini";
+export type ProviderId = "qwen" | "mimo" | "gemini";
 
-export const PROVIDER_IDS: ProviderId[] = ["qwen", "minimax", "mimo", "gemini"];
+export const PROVIDER_IDS: ProviderId[] = ["qwen", "mimo", "gemini"];
 
 export const PROVIDER_LABELS: Record<ProviderId, string> = {
   qwen: "Qwen",
   mimo: "MiMo",
-  minimax: "MiniMax",
   gemini: "Gemini",
 };
 
@@ -57,7 +56,7 @@ export interface ProviderCatalog {
 }
 
 export function isProviderId(value: unknown): value is ProviderId {
-  return value === "qwen" || value === "minimax" || value === "mimo" || value === "gemini";
+  return value === "qwen" || value === "mimo" || value === "gemini";
 }
 
 export function getVoiceById(catalog: ProviderCatalog, id: string): VoiceConfig | undefined {

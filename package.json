@@ -302,7 +302,7 @@
             "International endpoint: dashscope-intl.aliyuncs.com. Uses a region-specific API key."
           ],
           "default": "china",
-          "description": "DashScope endpoint for Qwen-TTS."
+          "description": "Qwen DashScope endpoint for Qwen-TTS."
         },
         "aiVoiceStudio.qwen.languageType": {
           "type": "string",

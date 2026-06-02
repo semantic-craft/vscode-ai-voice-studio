@@ -57,7 +57,7 @@ export async function synthesizeQwenRealtime(
 ): Promise<SynthesizeResult> {
   const text = args.text.trim();
   if (!text) throw new TTSApiError("Text cannot be empty.", -1);
-  if (!args.apiKey) throw new TTSApiError("DashScope API key is missing.", -1);
+  if (!args.apiKey) throw new TTSApiError("Qwen DashScope API key is missing.", -1);
   if (args.signal?.aborted) throw new TTSApiError("TTS synthesis cancelled.", -7);
 
   const url = `${REALTIME_WS_URLS[args.endpoint]}?model=${encodeURIComponent(args.model)}`;

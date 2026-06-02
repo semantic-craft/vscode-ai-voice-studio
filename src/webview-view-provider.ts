@@ -17,15 +17,6 @@ import {
   VOICE_DESIGN_TEMPLATE,
 } from "./core/mimo-voices";
 import { AUDIO_TAG_PRESETS as GEMINI_AUDIO_TAGS } from "./core/gemini-voices";
-import {
-  EMOTION_OPTIONS as MINIMAX_EMOTION_OPTIONS,
-  LANGUAGE_BOOST_PRESETS as MINIMAX_LANGUAGE_BOOSTS,
-  SPEECH_TAG_PRESETS as MINIMAX_SPEECH_TAGS,
-  TAG_CAPABLE_MODELS as MINIMAX_TAG_CAPABLE_MODELS,
-  type MiniMaxEmotion,
-  type MiniMaxFormat,
-  type MiniMaxRegion,
-} from "./core/minimax-voices";
 import { LANGUAGE_TYPES as QWEN_LANGUAGE_TYPES, type QwenEndpoint, type QwenLanguageType } from "./core/qwen-voices";
 
 type IncomingMessage =
@@ -50,14 +41,7 @@ type IncomingMessage =
   | { type: "geminiInsertAudioTag"; tag: string }
   | { type: "qwenEndpointChanged"; endpoint: QwenEndpoint }
   | { type: "qwenLanguageTypeChanged"; languageType: QwenLanguageType }
-  | { type: "qwenInstructionsChanged"; text: string }
-  | { type: "minimaxRegionChanged"; region: MiniMaxRegion }
-  | { type: "minimaxFormatChanged"; format: MiniMaxFormat }
-  | { type: "minimaxEmotionChanged"; emotion: MiniMaxEmotion }
-  | { type: "minimaxLanguageBoostChanged"; boost: string }
-  | { type: "minimaxSpeedChanged"; speed: number }
-  | { type: "minimaxVolChanged"; vol: number }
-  | { type: "minimaxPitchChanged"; pitch: number };
+  | { type: "qwenInstructionsChanged"; text: string };
 
 export type StudioMessageHandler = (msg: IncomingMessage) => void;
 
@@ -255,14 +239,9 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
     const qwenLanguageTypesJson = JSON.stringify(QWEN_LANGUAGE_TYPES);
     const providerGlyphsJson = JSON.stringify({
       mimo: "✿",
-      minimax: "✦",
       gemini: "✧",
       qwen: "❀",
     } satisfies Record<ProviderId, string>);
-    const minimaxEmotionsJson = JSON.stringify(MINIMAX_EMOTION_OPTIONS);
-    const minimaxLanguageBoostsJson = JSON.stringify(MINIMAX_LANGUAGE_BOOSTS);
-    const minimaxSpeechTagsJson = JSON.stringify(MINIMAX_SPEECH_TAGS);
-    const minimaxTagCapableJson = JSON.stringify(MINIMAX_TAG_CAPABLE_MODELS);
 
     return /* html */ `<!DOCTYPE html>
 <html lang="en">
@@ -790,45 +769,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         </div>
       </div>
 
-      <!-- MiniMax block -->
-      <div class="hidden" id="minimaxBlock">
-        <div class="row">
-          <label for="minimaxRegion">Region</label>
-          <select id="minimaxRegion">
-            <option value="mainland">Mainland — api.minimaxi.com</option>
-            <option value="global">Global — api.minimax.io</option>
-          </select>
-        </div>
-        <div class="row">
-          <label for="minimaxFormat">Format</label>
-          <select id="minimaxFormat">
-            <option value="mp3">mp3</option>
-            <option value="wav">wav</option>
-            <option value="pcm">pcm</option>
-          </select>
-        </div>
-        <div class="row">
-          <label for="minimaxEmotion">Emotion</label>
-          <select id="minimaxEmotion"></select>
-        </div>
-        <div class="row">
-          <label for="minimaxLanguageBoost">Lang boost</label>
-          <select id="minimaxLanguageBoost"></select>
-        </div>
-        <div class="row">
-          <label>Speed</label>
-          <input id="minimaxSpeed" type="number" min="0.5" max="2" step="0.05" />
-          <label style="flex: 0 0 32px; text-align: right;">Vol</label>
-          <input id="minimaxVol" type="number" min="0" max="10" step="0.1" />
-          <label style="flex: 0 0 36px; text-align: right;">Pitch</label>
-          <input id="minimaxPitch" type="number" min="-12" max="12" step="1" />
-        </div>
-        <div class="row stack hidden" id="minimaxSpeechTagRow">
-          <label>语气词</label>
-          <div class="group-hint">Click to insert at the cursor — only the speech-2.8 family supports them.</div>
-          <div id="minimaxSpeechTags" class="chips"></div>
-        </div>
-      </div>
     </div>
   </details>
 
@@ -877,10 +817,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       const VOICE_CLONE_PLACEHOLDER = ${clonePlaceholder};
       const GEMINI_AUDIO_TAGS = ${geminiAudioTagsJson};
       const QWEN_LANGUAGE_TYPES = ${qwenLanguageTypesJson};
-      const MINIMAX_EMOTIONS = ${minimaxEmotionsJson};
-      const MINIMAX_LANGUAGE_BOOSTS = ${minimaxLanguageBoostsJson};
-      const MINIMAX_SPEECH_TAGS = ${minimaxSpeechTagsJson};
-      const MINIMAX_TAG_CAPABLE = new Set(${minimaxTagCapableJson});
       const PROVIDER_GLYPHS = ${providerGlyphsJson};
       const TEST_PHRASES = {
         Chinese: "你好，这是您选择的语音。",
@@ -1031,16 +967,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         qwenLanguageType:   document.getElementById("qwenLanguageType"),
         qwenInstructionsRow: document.getElementById("qwenInstructionsRow"),
         qwenInstructions:   document.getElementById("qwenInstructions"),
-        minimaxBlock:       document.getElementById("minimaxBlock"),
-        minimaxRegion:      document.getElementById("minimaxRegion"),
-        minimaxFormat:      document.getElementById("minimaxFormat"),
-        minimaxEmotion:     document.getElementById("minimaxEmotion"),
-        minimaxLanguageBoost: document.getElementById("minimaxLanguageBoost"),
-        minimaxSpeed:       document.getElementById("minimaxSpeed"),
-        minimaxVol:         document.getElementById("minimaxVol"),
-        minimaxPitch:       document.getElementById("minimaxPitch"),
-        minimaxSpeechTagRow: document.getElementById("minimaxSpeechTagRow"),
-        minimaxSpeechTags:  document.getElementById("minimaxSpeechTags"),
         rate:               document.getElementById("rate"),
         rateValue:          document.getElementById("rateValue"),
         text:               document.getElementById("text"),
@@ -1142,7 +1068,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       }
       function activeProviderState() { return state[state.provider] || {}; }
       function isMimo()     { return state.provider === "mimo"; }
-      function isMiniMax()  { return state.provider === "minimax"; }
       function isGemini()   { return state.provider === "gemini"; }
       function isQwen()     { return state.provider === "qwen"; }
       function mimoModel()  { return (state.mimo && state.mimo.model) || ""; }
@@ -1288,7 +1213,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
         // Toggle the per-provider blocks first, then their inner controls.
         els.geminiBlock.classList.toggle("hidden",   !isGemini());
         els.qwenBlock.classList.toggle("hidden",     !isQwen());
-        els.minimaxBlock.classList.toggle("hidden",  !isMiniMax());
 
         const showMimo = isMimo();
         els.styleGroupsRow.classList.toggle("hidden", !showMimo);
@@ -1329,9 +1253,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
           const newPreamble = (state.gemini && state.gemini.stylePreamble) || "";
           if (els.geminiPreamble.value !== newPreamble) els.geminiPreamble.value = newPreamble;
           renderGeminiAudioTags();
-        }
-        if (isMiniMax()) {
-          renderMiniMaxBlock();
         }
         if (isQwen()) {
           const qs = state.qwen || {};
@@ -1670,101 +1591,6 @@ export class VoiceStudioViewProvider implements vscode.WebviewViewProvider {
       }
       els.qwenInstructions.addEventListener("change", commitQwenInstructions);
       els.qwenInstructions.addEventListener("blur", commitQwenInstructions);
-
-
-      // ---- MiniMax controls ----
-      function renderMiniMaxBlock() {
-        const ms = state.minimax || {};
-        if (els.minimaxEmotion.options.length === 0) {
-          for (const e of MINIMAX_EMOTIONS) {
-            const o = document.createElement("option");
-            o.value = e.id;
-            o.textContent = e.label;
-            els.minimaxEmotion.appendChild(o);
-          }
-        }
-        if (els.minimaxLanguageBoost.options.length === 0) {
-          for (const id of MINIMAX_LANGUAGE_BOOSTS) {
-            const o = document.createElement("option");
-            o.value = id;
-            o.textContent = id;
-            els.minimaxLanguageBoost.appendChild(o);
-          }
-        }
-        if (els.minimaxRegion.value !== (ms.region || "mainland")) {
-          els.minimaxRegion.value = ms.region || "mainland";
-        }
-        if (els.minimaxFormat.value !== (ms.format || "mp3")) {
-          els.minimaxFormat.value = ms.format || "mp3";
-        }
-        if (els.minimaxEmotion.value !== (ms.emotion || "auto")) {
-          els.minimaxEmotion.value = ms.emotion || "auto";
-        }
-        if (els.minimaxLanguageBoost.value !== (ms.languageBoost || "auto")) {
-          els.minimaxLanguageBoost.value = ms.languageBoost || "auto";
-        }
-        const speed = typeof ms.speed === "number" ? ms.speed : 1;
-        const vol = typeof ms.vol === "number" ? ms.vol : 1;
-        const pitch = typeof ms.pitch === "number" ? ms.pitch : 0;
-        if (document.activeElement !== els.minimaxSpeed && els.minimaxSpeed.value !== String(speed)) {
-          els.minimaxSpeed.value = String(speed);
-        }
-        if (document.activeElement !== els.minimaxVol && els.minimaxVol.value !== String(vol)) {
-          els.minimaxVol.value = String(vol);
-        }
-        if (document.activeElement !== els.minimaxPitch && els.minimaxPitch.value !== String(pitch)) {
-          els.minimaxPitch.value = String(pitch);
-        }
-        const showTags = MINIMAX_TAG_CAPABLE.has(ms.model);
-        els.minimaxSpeechTagRow.classList.toggle("hidden", !showTags);
-        if (showTags && els.minimaxSpeechTags.childElementCount === 0) {
-          for (const tag of MINIMAX_SPEECH_TAGS) {
-            const chip = document.createElement("button");
-            chip.type = "button";
-            chip.className = "chip audio-tag";
-            chip.textContent = tag.label;
-            chip.title = "插入 " + tag.token + "（MiniMax 官方语气词标记）";
-            chip.addEventListener("click", () => insertAudioTag(tag.token));
-            els.minimaxSpeechTags.appendChild(chip);
-          }
-        }
-      }
-
-      els.minimaxRegion.addEventListener("change", () => {
-        if (!state.minimax) state.minimax = {};
-        const region = els.minimaxRegion.value === "global" ? "global" : "mainland";
-        state.minimax.region = region;
-        vscode.postMessage({ type: "minimaxRegionChanged", region: region });
-      });
-      els.minimaxFormat.addEventListener("change", () => {
-        if (!state.minimax) state.minimax = {};
-        const format = els.minimaxFormat.value;
-        state.minimax.format = format;
-        vscode.postMessage({ type: "minimaxFormatChanged", format: format });
-      });
-      els.minimaxEmotion.addEventListener("change", () => {
-        if (!state.minimax) state.minimax = {};
-        const emotion = els.minimaxEmotion.value;
-        state.minimax.emotion = emotion;
-        vscode.postMessage({ type: "minimaxEmotionChanged", emotion: emotion });
-      });
-      els.minimaxLanguageBoost.addEventListener("change", () => {
-        if (!state.minimax) state.minimax = {};
-        const boost = els.minimaxLanguageBoost.value;
-        state.minimax.languageBoost = boost;
-        vscode.postMessage({ type: "minimaxLanguageBoostChanged", boost: boost });
-      });
-      function commitMiniMaxNumber(el, key, msgType) {
-        const value = parseFloat(el.value);
-        if (!Number.isFinite(value)) return;
-        if (!state.minimax) state.minimax = {};
-        if (state.minimax[key] === value) return;
-        state.minimax[key] = value;
-        vscode.postMessage({ type: msgType, [key]: value });
-      }
-      els.minimaxSpeed.addEventListener("change", () => commitMiniMaxNumber(els.minimaxSpeed, "speed", "minimaxSpeedChanged"));
-      els.minimaxVol.addEventListener("change", () => commitMiniMaxNumber(els.minimaxVol, "vol", "minimaxVolChanged"));
-      els.minimaxPitch.addEventListener("change", () => commitMiniMaxNumber(els.minimaxPitch, "pitch", "minimaxPitchChanged"));
 
       // ---- MiMo style prompt + templates ----
       function commitStylePrompt() {
@@ -2132,17 +1958,6 @@ interface SerializedConfig {
     stylePresets: MiMoStylePreset[];
     voiceCloneSample?: { fileName: string; mime: string; sizeBytes: number };
   };
-  minimax: {
-    model: string;
-    voice: string;
-    region: MiniMaxRegion;
-    format: MiniMaxFormat;
-    speed: number;
-    vol: number;
-    pitch: number;
-    emotion: MiniMaxEmotion;
-    languageBoost: string;
-  };
   gemini: { model: string; voice: string; stylePreamble: string };
   qwen: {
     model: string;
@@ -2174,17 +1989,6 @@ function serializeConfig(cfg: AppConfig, cloneSample?: MiMoVoiceCloneSampleRecor
       voiceCloneSample: cloneSample
         ? { fileName: cloneSample.fileName, mime: cloneSample.mime, sizeBytes: cloneSample.sizeBytes }
         : undefined,
-    },
-    minimax: {
-      model: cfg.minimax.model,
-      voice: cfg.minimax.voice,
-      region: cfg.minimax.region,
-      format: cfg.minimax.format,
-      speed: cfg.minimax.speed,
-      vol: cfg.minimax.vol,
-      pitch: cfg.minimax.pitch,
-      emotion: cfg.minimax.emotion,
-      languageBoost: cfg.minimax.languageBoost,
     },
     gemini: {
       model: cfg.gemini.model,

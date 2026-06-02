@@ -8,13 +8,6 @@ import {
   setMiMoStylePresets,
   setMiMoStylePrompt,
   setMiMoVoiceCloneSample,
-  setMiniMaxEmotion,
-  setMiniMaxFormat,
-  setMiniMaxLanguageBoost,
-  setMiniMaxPitch,
-  setMiniMaxRegion,
-  setMiniMaxSpeed,
-  setMiniMaxVol,
   setProvider,
   setProviderModel,
   setProviderVoice,
@@ -242,27 +235,6 @@ export function activate(context: vscode.ExtensionContext): void {
       case "qwenInstructionsChanged":
         queueConfigUpdate(() => setQwenInstructions(msg.text));
         return;
-      case "minimaxRegionChanged":
-        queueConfigUpdate(() => setMiniMaxRegion(msg.region));
-        return;
-      case "minimaxFormatChanged":
-        queueConfigUpdate(() => setMiniMaxFormat(msg.format));
-        return;
-      case "minimaxEmotionChanged":
-        queueConfigUpdate(() => setMiniMaxEmotion(msg.emotion));
-        return;
-      case "minimaxLanguageBoostChanged":
-        queueConfigUpdate(() => setMiniMaxLanguageBoost(msg.boost));
-        return;
-      case "minimaxSpeedChanged":
-        queueConfigUpdate(() => setMiniMaxSpeed(msg.speed));
-        return;
-      case "minimaxVolChanged":
-        queueConfigUpdate(() => setMiniMaxVol(msg.vol));
-        return;
-      case "minimaxPitchChanged":
-        queueConfigUpdate(() => setMiniMaxPitch(msg.pitch));
-        return;
     }
   });
 
@@ -482,27 +454,6 @@ function buildProviderArgs(
         voiceCloneSample,
       };
     }
-    case "minimax": {
-      const voice = resolveVoiceId(catalog, cfg.minimax.voice, cfg.minimax.model);
-      if (!voice) return undefined;
-      return {
-        provider: "minimax",
-        apiKey,
-        region: cfg.minimax.region,
-        model: cfg.minimax.model,
-        voice,
-        format: cfg.minimax.format,
-        sampleRate: cfg.minimax.sampleRate,
-        bitrate: cfg.minimax.bitrate,
-        channel: 1,
-        speed: cfg.minimax.speed,
-        vol: cfg.minimax.vol,
-        pitch: cfg.minimax.pitch,
-        emotion: cfg.minimax.emotion,
-        englishNormalization: cfg.minimax.englishNormalization,
-        languageBoost: cfg.minimax.languageBoost || undefined,
-      };
-    }
     case "gemini": {
       const voice = resolveVoiceId(catalog, cfg.gemini.voice, cfg.gemini.model);
       if (!voice) return undefined;
@@ -550,8 +501,6 @@ function pickVoiceAndModel(cfg: AppConfig): { voiceId: string; model: string } {
   switch (cfg.provider) {
     case "mimo":
       return { voiceId: cfg.mimo.voice, model: cfg.mimo.model };
-    case "minimax":
-      return { voiceId: cfg.minimax.voice, model: cfg.minimax.model };
     case "gemini":
       return { voiceId: cfg.gemini.voice, model: cfg.gemini.model };
     case "qwen":

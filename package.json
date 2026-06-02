@@ -1,8 +1,8 @@
 {
   "name": "ai-voice-studio",
-  "displayName": "AI Voice Studio: Qwen, MiniMax, MiMo & Gemini TTS",
-  "description": "在 VS Code 里朗读文本、生成语音：Qwen TTS、MiniMax TTS、MiMo TTS（小米）、Google Gemini TTS 多家语音合成一键切换，支持声音克隆、音色设计、情感语气标签、流式播放与亚秒级首字音延迟。Read text aloud in VS Code with Qwen, MiniMax, MiMo and Gemini TTS — multi-provider text-to-speech with voice cloning, voice design, emotion tags, and sub-second streaming.",
-  "version": "0.12.4",
+  "displayName": "AI Voice Studio: Qwen, MiMo & Gemini TTS",
+  "description": "在 VS Code 里朗读文本、生成语音：Qwen TTS、MiMo TTS（小米）、Google Gemini TTS 多家语音合成一键切换，支持声音克隆、音色设计、情感语气标签、流式播放与亚秒级首字音延迟。Read text aloud in VS Code with Qwen, MiMo and Gemini TTS — multi-provider text-to-speech with voice cloning, voice design, emotion tags, and sub-second streaming.",
+  "version": "0.12.7",
   "publisher": "xianwei-zhang",
   "license": "MIT",
   "icon": "media/icon.png",
@@ -25,11 +25,9 @@
     "text-to-speech",
     "text to speech",
     "qwen tts",
-    "minimax tts",
     "mimo tts",
     "gemini tts",
     "qwen",
-    "minimax",
     "mimo",
     "gemini",
     "qwen3-tts",
@@ -132,10 +130,9 @@
         "aiVoiceStudio.provider": {
           "type": "string",
           "enum": [
+            "qwen",
             "mimo",
-            "minimax",
-            "gemini",
-            "qwen"
+            "gemini"
           ],
           "default": "qwen",
           "description": "Active TTS provider."
@@ -173,8 +170,8 @@
         },
         "aiVoiceStudio.mimo.voice": {
           "type": "string",
-          "default": "mimo_default",
-          "description": "Default MiMo voice ID. Ignored for the voicedesign / voiceclone models."
+          "default": "Chloe",
+          "description": "Default MiMo voice ID. Uses an explicit English voice because MiMo Default is region-dependent. Ignored for the voicedesign / voiceclone models."
         },
         "aiVoiceStudio.mimo.format": {
           "type": "string",
@@ -242,121 +239,6 @@
             }
           }
         },
-        "aiVoiceStudio.minimax.model": {
-          "type": "string",
-          "enum": [
-            "speech-2.8-hd",
-            "speech-2.8-turbo",
-            "speech-2.6-hd",
-            "speech-2.6-turbo",
-            "speech-02-hd",
-            "speech-02-turbo"
-          ],
-          "enumDescriptions": [
-            "Best naturalness + emotion rendering with inline 语气词 like (laughs), (sighs).",
-            "Fastest 2.8 variant; trades a touch of prosody for latency.",
-            "Ultra-low latency with strong naturalness.",
-            "Speed-optimized for chat / digital human use; default for streaming.",
-            "Premium prosody, stability, and voice cloning fidelity.",
-            "Multilingual-strong; recommended for non-Chinese long-form reading."
-          ],
-          "default": "speech-2.6-turbo",
-          "description": "MiniMax T2A model. Synthesized over the WebSocket endpoint."
-        },
-        "aiVoiceStudio.minimax.voice": {
-          "type": "string",
-          "default": "Chinese (Mandarin)_Radio_Host",
-          "description": "Default MiniMax voice_id. Custom cloned voices are accepted too."
-        },
-        "aiVoiceStudio.minimax.region": {
-          "type": "string",
-          "enum": [
-            "mainland",
-            "global"
-          ],
-          "enumDescriptions": [
-            "Mainland endpoint: api.minimaxi.com (wss://api.minimaxi.com/ws/v1/t2a_v2).",
-            "Global endpoint: api.minimax.io (wss://api.minimax.io/ws/v1/t2a_v2). Uses a region-specific API key."
-          ],
-          "default": "mainland",
-          "description": "MiniMax WebSocket region."
-        },
-        "aiVoiceStudio.minimax.format": {
-          "type": "string",
-          "enum": [
-            "mp3",
-            "wav",
-            "pcm"
-          ],
-          "default": "mp3",
-          "description": "Output container. mp3 is smallest; wav/pcm are uncompressed."
-        },
-        "aiVoiceStudio.minimax.sampleRate": {
-          "type": "number",
-          "enum": [
-            8000,
-            16000,
-            22050,
-            24000,
-            32000,
-            44100
-          ],
-          "default": 32000,
-          "description": "Output sample rate in Hz. Documented values only."
-        },
-        "aiVoiceStudio.minimax.bitrate": {
-          "type": "number",
-          "minimum": 32000,
-          "maximum": 256000,
-          "default": 128000,
-          "description": "mp3 bitrate (bps). Ignored for wav/pcm."
-        },
-        "aiVoiceStudio.minimax.speed": {
-          "type": "number",
-          "minimum": 0.5,
-          "maximum": 2,
-          "default": 1,
-          "description": "Speaking rate. 0.5–2.0; default 1.0."
-        },
-        "aiVoiceStudio.minimax.vol": {
-          "type": "number",
-          "minimum": 0,
-          "maximum": 10,
-          "default": 1,
-          "description": "Volume gain. 0–10; default 1.0."
-        },
-        "aiVoiceStudio.minimax.pitch": {
-          "type": "number",
-          "minimum": -12,
-          "maximum": 12,
-          "default": 0,
-          "description": "Pitch shift in semitones. -12 to 12; default 0."
-        },
-        "aiVoiceStudio.minimax.emotion": {
-          "type": "string",
-          "enum": [
-            "auto",
-            "happy",
-            "sad",
-            "angry",
-            "fearful",
-            "disgusted",
-            "surprised",
-            "neutral"
-          ],
-          "default": "auto",
-          "description": "Emotion bias. 'auto' lets the model decide."
-        },
-        "aiVoiceStudio.minimax.englishNormalization": {
-          "type": "boolean",
-          "default": false,
-          "description": "Normalize English numerals and abbreviations before synthesis."
-        },
-        "aiVoiceStudio.minimax.languageBoost": {
-          "type": "string",
-          "default": "auto",
-          "description": "Hint to the model about the dominant language (e.g. 'Chinese', 'English'). 'auto' lets the model decide."
-        },
         "aiVoiceStudio.gemini.model": {
           "type": "string",
           "enum": [
@@ -420,7 +302,7 @@
             "International endpoint: dashscope-intl.aliyuncs.com. Uses a region-specific API key."
           ],
           "default": "china",
-          "description": "DashScope endpoint for Qwen-TTS."
+          "description": "Qwen DashScope endpoint for Qwen-TTS."
         },
         "aiVoiceStudio.qwen.languageType": {
           "type": "string",

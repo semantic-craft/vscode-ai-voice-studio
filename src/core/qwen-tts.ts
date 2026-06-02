@@ -56,7 +56,7 @@ export async function synthesizeQwen(args: QwenSynthesizeArgs): Promise<Synthesi
     throw new TTSApiError("Text cannot be empty.", -1);
   }
   if (!args.apiKey) {
-    throw new TTSApiError("DashScope API key is missing. Set DASHSCOPE_API_KEY or save a DashScope key.", -1);
+    throw new TTSApiError("Qwen DashScope API key is missing. Set DASHSCOPE_API_KEY or save a Qwen DashScope key.", -1);
   }
   if (args.signal?.aborted) {
     throw new TTSApiError("TTS synthesis cancelled.", -7);

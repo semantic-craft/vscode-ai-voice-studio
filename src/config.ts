@@ -4,31 +4,10 @@ import {
   DEFAULT_BASE_URL as MIMO_DEFAULT_BASE_URL,
   DEFAULT_FORMAT as MIMO_DEFAULT_FORMAT,
   DEFAULT_MODEL as MIMO_DEFAULT_MODEL,
-  DEFAULT_VOICE as MIMO_DEFAULT_VOICE,
+  normalizeMiMoVoice,
   type MiMoFormat,
   type MiMoModel,
 } from "./core/mimo-voices";
-import {
-  DEFAULT_BITRATE as MINIMAX_DEFAULT_BITRATE,
-  DEFAULT_EMOTION as MINIMAX_DEFAULT_EMOTION,
-  DEFAULT_FORMAT as MINIMAX_DEFAULT_FORMAT,
-  DEFAULT_LANGUAGE_BOOST as MINIMAX_DEFAULT_LANGUAGE_BOOST,
-  DEFAULT_MODEL as MINIMAX_DEFAULT_MODEL,
-  DEFAULT_PITCH as MINIMAX_DEFAULT_PITCH,
-  DEFAULT_REGION as MINIMAX_DEFAULT_REGION,
-  DEFAULT_SAMPLE_RATE as MINIMAX_DEFAULT_SAMPLE_RATE,
-  DEFAULT_SPEED as MINIMAX_DEFAULT_SPEED,
-  DEFAULT_VOICE as MINIMAX_DEFAULT_VOICE,
-  DEFAULT_VOL as MINIMAX_DEFAULT_VOL,
-  isMiniMaxEmotion,
-  isMiniMaxFormat,
-  isMiniMaxModel,
-  isMiniMaxRegion,
-  type MiniMaxEmotion,
-  type MiniMaxFormat,
-  type MiniMaxModel,
-  type MiniMaxRegion,
-} from "./core/minimax-voices";
 import {
   DEFAULT_BASE_URL as GEMINI_DEFAULT_BASE_URL,
   DEFAULT_MODEL as GEMINI_DEFAULT_MODEL,
@@ -68,21 +47,6 @@ export interface MiMoConfig {
   stylePresets: MiMoStylePreset[];
 }
 
-export interface MiniMaxConfig {
-  model: MiniMaxModel;
-  voice: string;
-  region: MiniMaxRegion;
-  format: MiniMaxFormat;
-  sampleRate: number;
-  bitrate: number;
-  speed: number;
-  vol: number;
-  pitch: number;
-  emotion: MiniMaxEmotion;
-  englishNormalization: boolean;
-  languageBoost: string;
-}
-
 export interface GeminiConfig {
   model: GeminiTTSModel;
   voice: string;
@@ -103,40 +67,26 @@ export interface AppConfig {
   playbackRate: number;
   chunkSize: number;
   mimo: MiMoConfig;
-  minimax: MiniMaxConfig;
   gemini: GeminiConfig;
   qwen: QwenConfig;
 }
 
 export function getConfig(): AppConfig {
   const cfg = vscode.workspace.getConfiguration(SECTION);
+  const mimoModel = normalizeMiMoModel(cfg.get<string>("mimo.model"));
   return {
     provider: normalizeProvider(cfg.get<string>("provider")),
     playbackRate: clampRate(cfg.get<number>("playbackRate") ?? 1),
     chunkSize: clampChunkSize(cfg.get<number>("chunkSize") ?? 250),
     mimo: {
-      model: normalizeMiMoModel(cfg.get<string>("mimo.model")),
-      voice: getTrimmedString(cfg, "mimo.voice") || MIMO_DEFAULT_VOICE,
+      model: mimoModel,
+      voice: normalizeMiMoVoice(cfg.get<string>("mimo.voice"), mimoModel),
       format: normalizeMiMoFormat(cfg.get<string>("mimo.format")),
       baseUrl: getTrimmedString(cfg, "mimo.baseUrl") || MIMO_DEFAULT_BASE_URL,
       stylePrompt: getString(cfg, "mimo.stylePrompt"),
       openingStyleTags: normalizeTagList(cfg.get<string[]>("mimo.openingStyleTags")),
       audioEventTags: normalizeTagList(cfg.get<string[]>("mimo.audioEventTags")),
       stylePresets: normalizePresetList(cfg.get<unknown[]>("mimo.stylePresets")),
-    },
-    minimax: {
-      model: normalizeMiniMaxModel(cfg.get<string>("minimax.model")),
-      voice: getTrimmedString(cfg, "minimax.voice") || MINIMAX_DEFAULT_VOICE,
-      region: normalizeMiniMaxRegion(cfg.get<string>("minimax.region")),
-      format: normalizeMiniMaxFormat(cfg.get<string>("minimax.format")),
-      sampleRate: clampSampleRate(cfg.get<number>("minimax.sampleRate") ?? MINIMAX_DEFAULT_SAMPLE_RATE),
-      bitrate: clampBitrate(cfg.get<number>("minimax.bitrate") ?? MINIMAX_DEFAULT_BITRATE),
-      speed: clampMiniMaxSpeed(cfg.get<number>("minimax.speed") ?? MINIMAX_DEFAULT_SPEED),
-      vol: clampMiniMaxVol(cfg.get<number>("minimax.vol") ?? MINIMAX_DEFAULT_VOL),
-      pitch: clampMiniMaxPitch(cfg.get<number>("minimax.pitch") ?? MINIMAX_DEFAULT_PITCH),
-      emotion: normalizeMiniMaxEmotion(cfg.get<string>("minimax.emotion")),
-      englishNormalization: cfg.get<boolean>("minimax.englishNormalization") === true,
-      languageBoost: getTrimmedString(cfg, "minimax.languageBoost") || MINIMAX_DEFAULT_LANGUAGE_BOOST,
     },
     gemini: {
       model: normalizeGeminiModel(cfg.get<string>("gemini.model")),
@@ -177,41 +127,6 @@ export async function setMiMoStylePrompt(text: string): Promise<void> {
 export async function setMiMoStylePresets(presets: MiMoStylePreset[]): Promise<void> {
   const cfg = vscode.workspace.getConfiguration(SECTION);
   await cfg.update("mimo.stylePresets", presets, vscode.ConfigurationTarget.Global);
-}
-
-export async function setMiniMaxRegion(region: string): Promise<void> {
-  const cfg = vscode.workspace.getConfiguration(SECTION);
-  await cfg.update("minimax.region", normalizeMiniMaxRegion(region), vscode.ConfigurationTarget.Global);
-}
-
-export async function setMiniMaxFormat(format: string): Promise<void> {
-  const cfg = vscode.workspace.getConfiguration(SECTION);
-  await cfg.update("minimax.format", normalizeMiniMaxFormat(format), vscode.ConfigurationTarget.Global);
-}
-
-export async function setMiniMaxEmotion(emotion: string): Promise<void> {
-  const cfg = vscode.workspace.getConfiguration(SECTION);
-  await cfg.update("minimax.emotion", normalizeMiniMaxEmotion(emotion), vscode.ConfigurationTarget.Global);
-}
-
-export async function setMiniMaxLanguageBoost(boost: string): Promise<void> {
-  const cfg = vscode.workspace.getConfiguration(SECTION);
-  await cfg.update("minimax.languageBoost", boost.trim() || MINIMAX_DEFAULT_LANGUAGE_BOOST, vscode.ConfigurationTarget.Global);
-}
-
-export async function setMiniMaxSpeed(speed: number): Promise<void> {
-  const cfg = vscode.workspace.getConfiguration(SECTION);
-  await cfg.update("minimax.speed", clampMiniMaxSpeed(speed), vscode.ConfigurationTarget.Global);
-}
-
-export async function setMiniMaxVol(vol: number): Promise<void> {
-  const cfg = vscode.workspace.getConfiguration(SECTION);
-  await cfg.update("minimax.vol", clampMiniMaxVol(vol), vscode.ConfigurationTarget.Global);
-}
-
-export async function setMiniMaxPitch(pitch: number): Promise<void> {
-  const cfg = vscode.workspace.getConfiguration(SECTION);
-  await cfg.update("minimax.pitch", clampMiniMaxPitch(pitch), vscode.ConfigurationTarget.Global);
 }
 
 export async function setQwenEndpoint(endpoint: string): Promise<void> {
@@ -325,59 +240,6 @@ function normalizeGeminiModel(value: string | undefined): GeminiTTSModel {
 
 function normalizeMiMoFormat(value: string | undefined): MiMoFormat {
   return value === "mp3" || value === "wav" ? value : MIMO_DEFAULT_FORMAT;
-}
-
-function normalizeMiniMaxModel(value: string | undefined): MiniMaxModel {
-  return isMiniMaxModel(value) ? value : MINIMAX_DEFAULT_MODEL;
-}
-
-function normalizeMiniMaxRegion(value: string | undefined): MiniMaxRegion {
-  return isMiniMaxRegion(value) ? value : MINIMAX_DEFAULT_REGION;
-}
-
-function normalizeMiniMaxFormat(value: string | undefined): MiniMaxFormat {
-  return isMiniMaxFormat(value) ? value : MINIMAX_DEFAULT_FORMAT;
-}
-
-function normalizeMiniMaxEmotion(value: string | undefined): MiniMaxEmotion {
-  return isMiniMaxEmotion(value) ? value : MINIMAX_DEFAULT_EMOTION;
-}
-
-const MINIMAX_SAMPLE_RATES = [8000, 16000, 22050, 24000, 32000, 44100];
-
-function clampSampleRate(rate: number): number {
-  if (!Number.isFinite(rate)) return MINIMAX_DEFAULT_SAMPLE_RATE;
-  // Snap to the closest documented rate.
-  let best = MINIMAX_SAMPLE_RATES[0];
-  let bestDelta = Math.abs(rate - best);
-  for (const r of MINIMAX_SAMPLE_RATES) {
-    const d = Math.abs(rate - r);
-    if (d < bestDelta) {
-      best = r;
-      bestDelta = d;
-    }
-  }
-  return best;
-}
-
-function clampBitrate(bitrate: number): number {
-  if (!Number.isFinite(bitrate)) return MINIMAX_DEFAULT_BITRATE;
-  return Math.max(32000, Math.min(256000, Math.round(bitrate / 1000) * 1000));
-}
-
-function clampMiniMaxSpeed(speed: number): number {
-  if (!Number.isFinite(speed)) return MINIMAX_DEFAULT_SPEED;
-  return Math.max(0.5, Math.min(2, speed));
-}
-
-function clampMiniMaxVol(vol: number): number {
-  if (!Number.isFinite(vol)) return MINIMAX_DEFAULT_VOL;
-  return Math.max(0, Math.min(10, vol));
-}
-
-function clampMiniMaxPitch(pitch: number): number {
-  if (!Number.isFinite(pitch)) return MINIMAX_DEFAULT_PITCH;
-  return Math.max(-12, Math.min(12, Math.round(pitch)));
 }
 
 function normalizeQwenModel(value: string | undefined): QwenTTSModel {

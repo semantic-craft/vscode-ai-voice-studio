@@ -1,18 +1,17 @@
-# AI Voice Studio — Qwen / MiniMax / MiMo / Gemini TTS
+# AI Voice Studio — Qwen / MiMo / Gemini TTS
 
-> **在 VS Code 里朗读文本、生成语音。** 一个侧边栏里一键切换 **Qwen TTS**、**MiniMax TTS**、**MiMo TTS（小米）**、**Google Gemini TTS** 多家语音合成引擎；支持声音克隆、音色设计、情感与语气词标签、流式播放与亚秒级首字音延迟。论文听书、长文朗读、讲稿配音都适用。
+> **在 VS Code 里朗读文本、生成语音。** 一个侧边栏里一键切换 **Qwen TTS**、**MiMo TTS（小米）**、**Google Gemini TTS** 多家语音合成引擎；支持声音克隆、音色设计、情感与语气词标签、流式播放与亚秒级首字音延迟。论文听书、长文朗读、讲稿配音都适用。
 >
-> **Read text aloud inside VS Code.** Switch between **Qwen**, **MiniMax**, **MiMo** (小米) and **Google Gemini** text-to-speech (TTS) from a single sidebar — voice cloning, voice design, emotion & tone-word (语气词) tags, streaming playback, and sub-second first-audio latency.
+> **Read text aloud inside VS Code.** Switch between **Qwen**, **MiMo** (小米) and **Google Gemini** text-to-speech (TTS) from a single sidebar — voice cloning, voice design, emotion & tone-word (语气词) tags, streaming playback, and sub-second first-audio latency.
 
-Qwen-TTS uses **SSE streaming with WebAudio seamless concatenation** for sub-second first-audio latency; MiniMax streams over the **T2A WebSocket**.
+Qwen-TTS uses **SSE streaming with WebAudio seamless concatenation** for sub-second first-audio latency.
 
 ## Features
 
-- Provider switcher at the top of the sidebar: Qwen, MiniMax, Gemini, MiMo.
+- Provider switcher at the top of the sidebar: Qwen, Gemini, MiMo.
 - Per-provider model and voice catalogs, with category grouping.
 - Per-provider parameter blocks:
   - **Qwen** — model (`qwen3-tts-flash` / `qwen3-tts-instruct-flash`), voice, endpoint (China / International), `language_type` (Auto / Chinese / English / German), and instruct-only style instructions. **Default streaming path uses HTTP SSE** with `X-DashScope-SSE: enable`, delivering PCM segments to the sidebar as they're generated.
-  - **MiniMax** — `speech-2.8` / `2.6` / `02` (hd & turbo) over the **T2A WebSocket**, region (Mainland / Global), emotion (开心 / 伤感 / 愤怒 / 害怕 / 厌恶 / 惊讶 / 中性), speed / volume / pitch, sample-rate & bitrate, and language boost. The 2.8 family also takes inline **语气词** tags — pick a Chinese chip (笑声 / 叹气 / 换气 …) and it inserts the documented MiniMax marker such as `(laughs)` / `(sighs)`.
   - **Gemini** — Gemini 3.1 / 2.5 flash & pro TTS preview, 30 prebuilt voices, style preamble, audio-tag chips.
   - **MiMo** — preset / voicedesign / voiceclone / legacy v2 models, style prompt, opening-style tags, audio-event tags, saved style presets, voice-clone uploader (≤10 MB).
 - **WebAudio seamless playback** for streamed PCM — adjacent SSE segments are scheduled on a shared `AudioContext` timeline, eliminating the 50–100 ms gap that an `<audio>` element would otherwise produce per segment.
@@ -20,7 +19,7 @@ Qwen-TTS uses **SSE streaming with WebAudio seamless concatenation** for sub-sec
 - **Tiered timeouts** — 15 s time-to-first-byte plus a 90 s overall ceiling; idle connections are surfaced before the wall-clock budget expires.
 - Sidebar Read, Test Voice, Pause / Resume (works with both WebAudio and HTMLAudio paths), Stop, progress, and local playback-speed control (live-applied to in-flight WebAudio sources).
 - Quick Read command for the current selection or clipboard (⌘⌥R / Ctrl+Alt+R).
-- API keys per provider in VS Code SecretStorage, plus environment-variable fallbacks (`DASHSCOPE_API_KEY` for Qwen, `MINIMAX_API_KEY` / `MINIMAXI_API_KEY` for MiniMax, `GEMINI_API_KEY` / `GOOGLE_API_KEY` for Gemini).
+- API keys per provider in VS Code SecretStorage, plus environment-variable fallbacks (`DASHSCOPE_API_KEY` for Qwen, `GEMINI_API_KEY` / `GOOGLE_API_KEY` for Gemini).
 
 ## Setup
 
@@ -44,11 +43,10 @@ Qwen-TTS uses **SSE streaming with WebAudio seamless concatenation** for sub-sec
 
 | Setting | Default | Notes |
 | --- | --- | --- |
-| `aiVoiceStudio.provider` | `qwen` | One of `qwen`, `minimax`, `gemini`, `mimo`. |
+| `aiVoiceStudio.provider` | `qwen` | One of `qwen`, `gemini`, `mimo`. |
 | `aiVoiceStudio.playbackRate` | `1` | Local playback speed, 0.5–4.0. |
 | `aiVoiceStudio.chunkSize` | `250` | Maximum characters per synthesis chunk. |
 | `aiVoiceStudio.qwen.*` | — | model, voice, endpoint, languageType, instructions. |
-| `aiVoiceStudio.minimax.*` | — | model, voice, region, format, sampleRate, bitrate, speed, vol, pitch, emotion, languageBoost. |
 | `aiVoiceStudio.gemini.*` | — | model, voice, baseUrl, stylePreamble. |
 | `aiVoiceStudio.mimo.*` | — | model, voice, format, baseUrl, stylePrompt, openingStyleTags, audioEventTags, stylePresets. |
 
@@ -69,4 +67,4 @@ npm run lint
 npm run vscode:prepublish
 ```
 
-Live API calls are opt-in inside tests. Do not call DashScope / MiniMax / Gemini / MiMo from tests unless explicitly guarded by an environment variable such as `AI_VOICE_STUDIO_LIVE=1`.
+Live API calls are opt-in inside tests. Do not call DashScope / Gemini / MiMo from tests unless explicitly guarded by an environment variable such as `AI_VOICE_STUDIO_LIVE=1`.

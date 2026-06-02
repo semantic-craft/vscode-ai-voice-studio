@@ -15,7 +15,7 @@ const ENV_FALLBACKS: Partial<Record<ProviderId, string[]>> = {
 const PROMPT_TITLES: Record<ProviderId, string> = {
   mimo: "MiMo Token Plan API key (tp-…)",
   gemini: "Google AI Studio API key",
-  qwen: "DashScope API key",
+  qwen: "Qwen DashScope API key",
 };
 
 const PLACEHOLDERS: Record<ProviderId, string> = {
